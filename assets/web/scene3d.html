@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Integra3D - Visualizador de Superficies y Volúmenes</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background-color: #0F172A; /* Slate 900 */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #F8FAFC;
+    }
+    #viewport { width: 100%; height: 100%; display: block; }
+    #overlay {
+      position: absolute;
+      top: 12px; left: 12px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 13px;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    .axis-legend { display: flex; gap: 10px; margin-top: 4px; font-weight: 600; font-size: 11px; }
+    .x-axis { color: #EF4444; }
+    .y-axis { color: #10B981; }
+    .z-axis { color: #3B82F6; }
+    #controls {
+      position: absolute;
+      bottom: 12px; right: 12px;
+      display: flex; gap: 8px;
+    }
+    .btn {
+      background: rgba(30, 41, 59, 0.9);
+      color: #E2E8F0;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+      transition: background 0.2s;
+    }
+    .btn:active { background: #3B82F6; color: white; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <div id="overlay">
+    <div id="surface-title" style="font-weight: 600;">Integra3D Viewport</div>
+    <div class="axis-legend">
+      <span class="x-axis">■ Eje X</span>
+      <span class="y-axis">■ Eje Y</span>
+      <span class="z-axis">■ Eje Z (Altura)</span>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button class="btn" onclick="toggleWireframe()">Malla / Wireframe</button>
+    <button class="btn" onclick="resetCamera()">Centrar</button>
+  </div>
+
+  <div id="viewport"></div>
+
+  <script>
+    let scene, camera, renderer, controls;
+    let surfaceMeshGroup;
+    let wireframeActive = false;
+
+    function init() {
+      const container = document.getElementById('viewport');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0B1120);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(6, -7, 6);
+      camera.up.set(0, 0, 1); // Z-axis is UP for multivariable calculus
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      // OrbitControls
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxDistance = 50;
+      controls.minDistance = 1;
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+      scene.add(ambientLight);
+
+      const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight1.position.set(10, 10, 15);
+      scene.add(dirLight1);
+
+      const dirLight2 = new THREE.DirectionalLight(0x60A5FA, 0.4);
+      dirLight2.position.set(-10, -10, -5);
+      scene.add(dirLight2);
+
+      // Grid helper (XY Plane)
+      const gridHelper = new THREE.GridHelper(10, 20, 0x334155, 0x1E293B);
+      gridHelper.rotation.x = Math.PI / 2; // Lie on XY plane
+      scene.add(gridHelper);
+
+      // Coordinate Axes: Red = X, Green = Y, Blue = Z
+      const axesHelper = new THREE.AxesHelper(5);
+      axesHelper.renderOrder = 1;
+      scene.add(axesHelper);
+
+      surfaceMeshGroup = new THREE.Group();
+      scene.add(surfaceMeshGroup);
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+
+      // Render initial sample (Paraboloid)
+      loadSampleParaboloid();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function resetCamera() {
+      camera.position.set(6, -7, 6);
+      camera.lookAt(0, 0, 0);
+      controls.target.set(0, 0, 0);
+    }
+
+    function toggleWireframe() {
+      wireframeActive = !wireframeActive;
+      surfaceMeshGroup.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.wireframe = wireframeActive;
+        }
+      });
+    }
+
+    // Called from Flutter to load raw mesh data
+    window.renderMeshData = function(data) {
+      if (typeof data === 'string') {
+        data = JSON.parse(data);
+      }
+      
+      // Clear previous surfaces
+      while (surfaceMeshGroup.children.length > 0) {
+        const obj = surfaceMeshGroup.children[0];
+        surfaceMeshGroup.remove(obj);
+      }
+
+      if (data.title) {
+        document.getElementById('surface-title').innerText = data.title;
+      }
+
+      if (data.type === 'surface' && data.vertices && data.indices) {
+        buildSingleSurface(data.vertices, data.indices, 0x38BDF8, 0.85);
+      } else if (data.type === 'volume') {
+        if (data.top_surface) {
+          buildSingleSurface(data.top_surface.vertices, data.top_surface.indices, 0x38BDF8, 0.8);
+        }
+        if (data.bottom_surface) {
+          buildSingleSurface(data.bottom_surface.vertices, data.bottom_surface.indices, 0xF97316, 0.8);
+        }
+      }
+    };
+
+    function buildSingleSurface(vertices, indices, colorHex, opacity) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshPhongMaterial({
+        color: colorHex,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: opacity,
+        wireframe: wireframeActive,
+        shininess: 60,
+        flatShading: false
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      surfaceMeshGroup.add(mesh);
+    }
+
+    function loadSampleParaboloid() {
+      const verts = [];
+      const inds = [];
+      const res = 28;
+      const rMax = 2;
+      for (let i = 0; i <= res; i++) {
+        const u = -rMax + (2 * rMax * i) / res;
+        for (let j = 0; j <= res; j++) {
+          const v = -rMax + (2 * rMax * j) / res;
+          const r2 = u*u + v*v;
+          const z = (r2 <= 4) ? (4 - r2) : 0;
+          verts.push(u, v, z);
+        }
+      }
+      for (let i = 0; i < res; i++) {
+        for (let j = 0; j < res; j++) {
+          const p0 = i * (res + 1) + j;
+          const p1 = (i + 1) * (res + 1) + j;
+          const p2 = i * (res + 1) + (j + 1);
+          const p3 = (i + 1) * (res + 1) + (j + 1);
+          inds.push(p0, p1, p2);
+          inds.push(p1, p3, p2);
+        }
+      }
+      buildSingleSurface(verts, inds, 0x38BDF8, 0.85);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
