@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integra_3d/core/theme/app_theme.dart';
-import 'package:integra_3d/core/theme/math_colors.dart';
 import 'package:integra_3d/features/solver/presentation/widgets/math_step_demo_card.dart';
 
 void main() {

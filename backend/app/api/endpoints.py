@@ -5,12 +5,13 @@ Receives calculation requests, calls the symbolic engine, and returns academic-g
 
 from typing import List, Optional
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 
 from app.domain.models import MultivariableIntegral, IntegrationBound, CoordinateSystem
 from app.engine.solver import SymPyMultivariableSolver
 from app.engine.mesh_generator import Mesh3DGenerator
 from app.engine.llm_explainer import LLMExplainer
+from app.engine.ocr_engine import MathOcrEngine
 
 router = APIRouter(prefix="/api/v1", tags=["integrals"])
 
@@ -134,6 +135,17 @@ async def get_presets():
             ]
         }
     ]
+
+
+@router.post("/ocr/transcribe")
+async def transcribe_integral(file: UploadFile = File(...)):
+    """Transcribes a multivariable integral from an image (camera/gallery)."""
+    try:
+        image_bytes = await file.read()
+        result = MathOcrEngine.transcribe(image_bytes, filename=file.filename or "image.png")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error en OCR: {str(e)}")
 
 
 @router.get("/health")

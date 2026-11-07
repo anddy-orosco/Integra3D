@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/math_colors.dart';
 import '../../../calculator/domain/entities/multivariable_integral.dart';
+import '../../../calculator/presentation/widgets/keyboard/math_keyboard.dart';
+import '../../../ocr/presentation/widgets/ocr_scanner_modal.dart';
 import '../../../solver/presentation/providers/solver_provider.dart';
 import '../../../solver/presentation/widgets/latex_card.dart';
 import '../../../visualization_3d/presentation/widgets/native_3d_viewport.dart';
@@ -19,19 +21,74 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
   late TabController _tabController;
   final TextEditingController _integrandController = TextEditingController();
 
+  // Control de teclado virtual matemático
+  bool _showMathKeyboard = false;
+  late TextEditingController _activeController;
+  String _activeFieldLabel = 'Integrando f(x, y, z)';
+
+  // Controladores para los límites de integración
+  final Map<String, TextEditingController> _boundControllers = {};
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     final initialIntegral = ref.read(solverProvider).currentIntegral;
     _integrandController.text = initialIntegral.integrand;
+    _activeController = _integrandController;
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _integrandController.dispose();
+    for (final c in _boundControllers.values) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  TextEditingController _getBoundController(int index, bool isLower, String initialVal) {
+    final key = '${index}_${isLower ? "lower" : "upper"}';
+    if (!_boundControllers.containsKey(key)) {
+      final ctrl = TextEditingController(text: initialVal);
+      _boundControllers[key] = ctrl;
+      return ctrl;
+    }
+    final existing = _boundControllers[key]!;
+    if (!_showMathKeyboard && existing.text != initialVal) {
+      existing.text = initialVal;
+    }
+    return existing;
+  }
+
+  void _openOcrScanner() {
+    OcrScannerModal.show(
+      context,
+      onIntegralAccepted: (integral) {
+        final notifier = ref.read(solverProvider.notifier);
+        notifier.loadPreset({
+          'name': 'Ejercicio Escaneado',
+          'dimension': integral.dimension,
+          'integrand': integral.integrand,
+          'coordinate_system': integral.coordinateSystem.apiValue,
+          'bounds': integral.bounds.map((b) => b.toJson()).toList(),
+        });
+        setState(() {
+          _integrandController.text = integral.integrand;
+          _showMathKeyboard = false;
+        });
+        _tabController.animateTo(1); // Saltar a la solución
+      },
+    );
+  }
+
+  void _focusField(TextEditingController ctrl, String label) {
+    setState(() {
+      _activeController = ctrl;
+      _activeFieldLabel = label;
+      _showMathKeyboard = true;
+    });
   }
 
   @override
@@ -40,7 +97,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     final notifier = ref.read(solverProvider.notifier);
     final mathColors = context.mathColors;
 
-    if (_integrandController.text != state.currentIntegral.integrand) {
+    if (_integrandController.text != state.currentIntegral.integrand && !_showMathKeyboard) {
       _integrandController.text = state.currentIntegral.integrand;
     }
 
@@ -71,7 +128,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                   ),
                 ),
                 Text(
-                  'Cálculo Multivariable & Spectral 3D',
+                  'Cálculo Multivariable & Math OCR',
                   style: TextStyle(
                     fontSize: 10,
                     color: mathColors.metadataText,
@@ -82,10 +139,17 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           ],
         ),
         actions: [
+          // Botón directo para Escanear con Cámara o Foto
+          IconButton(
+            icon: const Icon(Icons.camera_alt_rounded, size: 20, color: AppColors.amberGlow),
+            tooltip: 'Escanear ejercicio con foto (OCR)',
+            onPressed: _openOcrScanner,
+          ),
+
           // Engine Status Indicator Pill
           Container(
             margin: const EdgeInsets.symmetric(vertical: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: state.isBackendConnected
                   ? mathColors.primaryAction.withAlpha(25)
@@ -103,16 +167,16 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               children: [
                 Icon(
                   Icons.circle,
-                  size: 8,
+                  size: 7,
                   color: state.isBackendConnected
                       ? mathColors.primaryAction
                       : mathColors.mathWarning,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 Text(
-                  state.isBackendConnected ? 'SymPy CAS' : 'Motor Local',
+                  state.isBackendConnected ? 'SymPy' : 'Local',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: state.isBackendConnected
                         ? mathColors.primaryAction
@@ -127,7 +191,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             tooltip: 'Sincronizar conexión',
             onPressed: () => notifier.checkConnectionAndSync(),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -138,7 +202,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
 
             // Refined Segmented Tab Bar (Dark Matrix)
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
                 color: AppColors.slateDark,
@@ -178,6 +242,37 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 ],
               ),
             ),
+
+            // 3. Teclado Matemático Desplegable (Mathway Style)
+            if (_showMathKeyboard && _tabController.index == 0) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                color: AppColors.deepVoid,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.keyboard_alt_outlined, size: 14, color: AppColors.electricCyan),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Teclado Activo: $_activeFieldLabel',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.electricCyan),
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _showMathKeyboard = false),
+                      child: const Text('Ocultar', style: TextStyle(fontSize: 11, color: AppColors.mutedGray)),
+                    ),
+                  ],
+                ),
+              ),
+              MathKeyboard(
+                controller: _activeController,
+                onClose: () => setState(() => _showMathKeyboard = false),
+              ),
+            ],
           ],
         ),
       ),
@@ -189,7 +284,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
 
     return Container(
       height: 38,
-      margin: const EdgeInsets.only(top: 4, bottom: 4),
+      margin: const EdgeInsets.only(top: 2, bottom: 4),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -229,6 +324,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               ),
               onPressed: () {
                 notifier.loadPreset(preset);
+                setState(() {
+                  _integrandController.text = preset['integrand'] as String? ?? '';
+                  _showMathKeyboard = false;
+                });
                 _tabController.animateTo(1);
               },
             ),
@@ -260,7 +359,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 Expanded(
                   child: InkWell(
                     borderRadius: BorderRadius.circular(8),
-                    onTap: () => notifier.setDimension(2),
+                    onTap: () {
+                      notifier.setDimension(2);
+                      setState(() => _showMathKeyboard = false);
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
@@ -287,7 +389,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 Expanded(
                   child: InkWell(
                     borderRadius: BorderRadius.circular(8),
-                    onTap: () => notifier.setDimension(3),
+                    onTap: () {
+                      notifier.setDimension(3);
+                      setState(() => _showMathKeyboard = false);
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
@@ -335,13 +440,46 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           ),
           const SizedBox(height: 12),
 
-          // Integrand input
+          // Integrand input (Con accesos directos estilo Mathway: Teclado y Cámara)
           TextField(
             controller: _integrandController,
+            onTap: () => _focusField(_integrandController, 'Integrando f(x, y, z)'),
             decoration: InputDecoration(
               labelText: 'Función Integrando f(x, y, z)',
               hintText: 'Ej: 4 - x^2 - y^2 o exp(-x^2 - y^2)',
               prefixIcon: Icon(Icons.functions_rounded, size: 18, color: mathColors.secondaryAccent),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      Icons.keyboard_alt_outlined,
+                      size: 20,
+                      color: (_showMathKeyboard && _activeController == _integrandController)
+                          ? mathColors.secondaryAccent
+                          : AppColors.mutedGray,
+                    ),
+                    tooltip: 'Abrir Teclado Matemático',
+                    onPressed: () {
+                      setState(() {
+                        if (_showMathKeyboard && _activeController == _integrandController) {
+                          _showMathKeyboard = false;
+                        } else {
+                          _activeController = _integrandController;
+                          _activeFieldLabel = 'Integrando f(x, y, z)';
+                          _showMathKeyboard = true;
+                        }
+                      });
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.camera_alt_outlined, size: 20, color: AppColors.amberGlow),
+                    tooltip: 'Escanear con Foto (OCR)',
+                    onPressed: _openOcrScanner,
+                  ),
+                  const SizedBox(width: 4),
+                ],
+              ),
             ),
             onChanged: (val) => notifier.updateIntegrand(val),
           ),
@@ -375,6 +513,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             final orderLabel = index == 0
                 ? 'Interior'
                 : (index == integral.bounds.length - 1 ? 'Exterior' : 'Intermedio');
+
+            final lowerCtrl = _getBoundController(index, true, bound.lower);
+            final upperCtrl = _getBoundController(index, false, bound.upper);
+
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
@@ -404,17 +546,37 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                   Row(
                     children: [
                       Expanded(
-                        child: TextFormField(
-                          initialValue: bound.lower,
-                          decoration: const InputDecoration(labelText: 'Límite Inferior (a)'),
+                        child: TextField(
+                          controller: lowerCtrl,
+                          onTap: () => _focusField(lowerCtrl, 'Límite Inferior de d${bound.variable}'),
+                          decoration: InputDecoration(
+                            labelText: 'Inferior (a)',
+                            suffixIcon: Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: (_showMathKeyboard && _activeController == lowerCtrl)
+                                  ? mathColors.secondaryAccent
+                                  : AppColors.mutedGray,
+                            ),
+                          ),
                           onChanged: (val) => notifier.updateBound(index, lower: val),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: TextFormField(
-                          initialValue: bound.upper,
-                          decoration: const InputDecoration(labelText: 'Límite Superior (b)'),
+                        child: TextField(
+                          controller: upperCtrl,
+                          onTap: () => _focusField(upperCtrl, 'Límite Superior de d${bound.variable}'),
+                          decoration: InputDecoration(
+                            labelText: 'Superior (b)',
+                            suffixIcon: Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: (_showMathKeyboard && _activeController == upperCtrl)
+                                  ? mathColors.secondaryAccent
+                                  : AppColors.mutedGray,
+                            ),
+                          ),
                           onChanged: (val) => notifier.updateBound(index, upper: val),
                         ),
                       ),
@@ -435,6 +597,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             icon: const Icon(Icons.bolt_rounded, size: 20),
             label: const Text('CALCULAR Y PROYECTAR EN 3D'),
             onPressed: () {
+              setState(() => _showMathKeyboard = false);
               notifier.solve();
               _tabController.animateTo(1);
             },
