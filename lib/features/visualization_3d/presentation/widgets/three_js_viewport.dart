@@ -60,7 +60,7 @@ class _ThreeJsViewportState extends State<ThreeJsViewport> {
           WebViewWidget(controller: _controller),
           if (!_isPageLoaded)
             const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryCyan),
+              child: CircularProgressIndicator(color: AppTheme.primaryBlue),
             ),
         ],
       ),

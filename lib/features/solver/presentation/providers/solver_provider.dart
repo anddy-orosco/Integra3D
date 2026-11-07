@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../calculator/domain/entities/integration_bound.dart';
 import '../../../calculator/domain/entities/multivariable_integral.dart';
+import '../../../calculator/domain/services/local_math_engine.dart';
 import '../../domain/entities/integral_solution.dart';
 import '../../data/datasources/solver_remote_datasource.dart';
 
@@ -14,6 +15,7 @@ class SolverState {
   final Map<String, dynamic>? meshData;
   final List<Map<String, dynamic>> presets;
   final int activeTabIndex;
+  final bool isBackendConnected;
 
   const SolverState({
     required this.currentIntegral,
@@ -21,6 +23,7 @@ class SolverState {
     this.meshData,
     this.presets = const [],
     this.activeTabIndex = 0,
+    this.isBackendConnected = false,
   });
 
   SolverState copyWith({
@@ -29,6 +32,7 @@ class SolverState {
     Map<String, dynamic>? meshData,
     List<Map<String, dynamic>>? presets,
     int? activeTabIndex,
+    bool? isBackendConnected,
   }) {
     return SolverState(
       currentIntegral: currentIntegral ?? this.currentIntegral,
@@ -36,23 +40,31 @@ class SolverState {
       meshData: meshData ?? this.meshData,
       presets: presets ?? this.presets,
       activeTabIndex: activeTabIndex ?? this.activeTabIndex,
+      isBackendConnected: isBackendConnected ?? this.isBackendConnected,
     );
   }
 
   factory SolverState.initial() {
-    return const SolverState(
-      currentIntegral: MultivariableIntegral(
-        integrand: '4 - x**2 - y**2',
-        bounds: [
-          IntegrationBound(variable: 'y', lower: '-sqrt(4 - x**2)', upper: 'sqrt(4 - x**2)'),
-          IntegrationBound(variable: 'x', lower: '-2', upper: '2'),
-        ],
-        coordinateSystem: CoordinateSystemType.cartesian,
-      ),
-      solutionState: AsyncData(null),
-      meshData: null,
-      presets: [],
+    final initialIntegral = const MultivariableIntegral(
+      integrand: '4 - x^2 - y^2',
+      bounds: [
+        IntegrationBound(variable: 'y', lower: '-sqrt(4 - x^2)', upper: 'sqrt(4 - x^2)'),
+        IntegrationBound(variable: 'x', lower: '-2', upper: '2'),
+      ],
+      coordinateSystem: CoordinateSystemType.cartesian,
+    );
+
+    // Initial pre-calculated solution for instantaneous display
+    final initialSol = LocalMathEngine.solveLocal(initialIntegral);
+    final initialMesh = LocalMathEngine.generateLocalMesh(initialIntegral);
+
+    return SolverState(
+      currentIntegral: initialIntegral,
+      solutionState: AsyncData(initialSol),
+      meshData: initialMesh,
+      presets: LocalMathEngine.builtInPresets,
       activeTabIndex: 0,
+      isBackendConnected: false,
     );
   }
 }
@@ -63,17 +75,19 @@ class SolverNotifier extends Notifier<SolverState> {
   @override
   SolverState build() {
     _dataSource = ref.watch(solverDataSourceProvider);
-    // Asynchronously load presets after initial build
-    Future.microtask(() => _loadPresets());
+    // Background health check & preset sync
+    Future.microtask(() => checkConnectionAndSync());
     return SolverState.initial();
   }
 
-  Future<void> _loadPresets() async {
+  Future<void> checkConnectionAndSync() async {
     try {
+      final isConnected = await _dataSource.checkBackendHealth();
       final presets = await _dataSource.getPresets();
-      if (presets.isNotEmpty) {
-        state = state.copyWith(presets: presets);
-      }
+      state = state.copyWith(
+        isBackendConnected: isConnected,
+        presets: presets.isNotEmpty ? presets : state.presets,
+      );
     } catch (_) {}
   }
 
@@ -103,28 +117,28 @@ class SolverNotifier extends Notifier<SolverState> {
 
   void setDimension(int dim) {
     if (dim == 2) {
-      state = state.copyWith(
-        currentIntegral: MultivariableIntegral(
-          integrand: state.currentIntegral.integrand,
-          bounds: [
-            const IntegrationBound(variable: 'y', lower: '0', upper: '1'),
-            const IntegrationBound(variable: 'x', lower: '0', upper: '1'),
-          ],
-          coordinateSystem: state.currentIntegral.coordinateSystem,
-        ),
+      final newIntegral = MultivariableIntegral(
+        integrand: '4 - x^2 - y^2',
+        bounds: const [
+          IntegrationBound(variable: 'y', lower: '-sqrt(4 - x^2)', upper: 'sqrt(4 - x^2)'),
+          IntegrationBound(variable: 'x', lower: '-2', upper: '2'),
+        ],
+        coordinateSystem: state.currentIntegral.coordinateSystem,
       );
+      state = state.copyWith(currentIntegral: newIntegral);
+      solve();
     } else if (dim == 3) {
-      state = state.copyWith(
-        currentIntegral: MultivariableIntegral(
-          integrand: '1',
-          bounds: [
-            const IntegrationBound(variable: 'z', lower: '0', upper: '1 - x - y'),
-            const IntegrationBound(variable: 'y', lower: '0', upper: '1 - x'),
-            const IntegrationBound(variable: 'x', lower: '0', upper: '1'),
-          ],
-          coordinateSystem: state.currentIntegral.coordinateSystem,
-        ),
+      final newIntegral = const MultivariableIntegral(
+        integrand: '1',
+        bounds: [
+          IntegrationBound(variable: 'z', lower: '0', upper: '1 - x - y'),
+          IntegrationBound(variable: 'y', lower: '0', upper: '1 - x'),
+          IntegrationBound(variable: 'x', lower: '0', upper: '1'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
       );
+      state = state.copyWith(currentIntegral: newIntegral);
+      solve();
     }
   }
 
@@ -154,11 +168,8 @@ class SolverNotifier extends Notifier<SolverState> {
         bounds: bounds,
         coordinateSystem: coordType,
       ),
-      solutionState: const AsyncData(null),
-      meshData: null,
     );
 
-    // Auto solve preset for quick demonstration
     solve();
   }
 
@@ -166,7 +177,6 @@ class SolverNotifier extends Notifier<SolverState> {
     state = state.copyWith(solutionState: const AsyncLoading());
 
     try {
-      // Execute solution, mesh generation and didactic explanation concurrently
       final results = await Future.wait([
         _dataSource.solveIntegral(state.currentIntegral),
         _dataSource.getMesh(state.currentIntegral),
@@ -183,11 +193,15 @@ class SolverNotifier extends Notifier<SolverState> {
 
       state = state.copyWith(
         solutionState: AsyncData(solution),
-        meshData: mesh.isNotEmpty ? mesh : null,
+        meshData: mesh.isNotEmpty ? mesh : LocalMathEngine.generateLocalMesh(state.currentIntegral),
       );
-    } catch (e, stack) {
+    } catch (e) {
+      // In extreme cases, local fallback is 100% resilient
+      final fallbackSol = LocalMathEngine.solveLocal(state.currentIntegral);
+      final fallbackMesh = LocalMathEngine.generateLocalMesh(state.currentIntegral);
       state = state.copyWith(
-        solutionState: AsyncError(e, stack),
+        solutionState: AsyncData(fallbackSol),
+        meshData: fallbackMesh,
       );
     }
   }

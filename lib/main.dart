@@ -20,7 +20,7 @@ class Integra3DApp extends StatelessWidget {
     return MaterialApp(
       title: 'Integra3D',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.academicDarkTheme,
       home: const HomeDashboardScreen(),
     );
   }

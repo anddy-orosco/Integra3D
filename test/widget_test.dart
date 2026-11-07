@@ -30,6 +30,11 @@ class FakeSolverRemoteDataSource implements SolverRemoteDataSource {
   Future<List<Map<String, dynamic>>> getPresets() async {
     return [];
   }
+
+  @override
+  Future<bool> checkBackendHealth() async {
+    return false;
+  }
 }
 
 void main() {
@@ -46,6 +51,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Integra3D'), findsOneWidget);
-    expect(find.text('CALCULAR CON SYMPY'), findsOneWidget);
+    expect(find.text('RESOLVER Y GRAFICAR EN 3D'), findsOneWidget);
   });
 }

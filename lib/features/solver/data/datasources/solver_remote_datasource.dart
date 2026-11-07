@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../../../core/constants/api_constants.dart';
-import '../../../../core/errors/failures.dart';
 import '../../../calculator/domain/entities/multivariable_integral.dart';
+import '../../../calculator/domain/services/local_math_engine.dart';
 import '../../domain/entities/integral_solution.dart';
 
 abstract class SolverRemoteDataSource {
@@ -9,6 +9,7 @@ abstract class SolverRemoteDataSource {
   Future<Map<String, dynamic>> getMesh(MultivariableIntegral integral);
   Future<List<PedagogicalSection>> getExplanation(MultivariableIntegral integral);
   Future<List<Map<String, dynamic>>> getPresets();
+  Future<bool> checkBackendHealth();
 }
 
 class SolverRemoteDataSourceImpl implements SolverRemoteDataSource {
@@ -19,11 +20,21 @@ class SolverRemoteDataSourceImpl implements SolverRemoteDataSource {
             Dio(
               BaseOptions(
                 baseUrl: ApiConstants.baseUrl,
-                connectTimeout: ApiConstants.timeout,
-                receiveTimeout: ApiConstants.timeout,
+                connectTimeout: const Duration(seconds: 2), // Fast fallback
+                receiveTimeout: const Duration(seconds: 5),
                 headers: {'Content-Type': 'application/json'},
               ),
             );
+
+  @override
+  Future<bool> checkBackendHealth() async {
+    try {
+      final res = await dio.get(ApiConstants.healthEndpoint);
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   Future<IntegralSolution> solveIntegral(MultivariableIntegral integral) async {
@@ -35,23 +46,13 @@ class SolverRemoteDataSourceImpl implements SolverRemoteDataSource {
 
       if (response.statusCode == 200) {
         return IntegralSolution.fromJson(response.data as Map<String, dynamic>);
-      } else {
-        throw const ServerFailure();
       }
-    } on DioException catch (e) {
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw NetworkFailure(
-          'No se pudo conectar al motor SymPy en ${dio.options.baseUrl}. '
-          'Verifica que el servicio Python esté ejecutándose (python backend/main.py).',
-        );
-      }
-      final msg = e.response?.data?['detail'] ?? e.message ?? 'Error de cálculo';
-      throw CalculationFailure(msg.toString());
-    } catch (e) {
-      if (e is Failure) rethrow;
-      throw CalculationFailure(e.toString());
+    } catch (_) {
+      // Backend not running -> Seamless fallback to Local Mathematical Engine
     }
+
+    // Fallback: Calculate autonomously in Dart
+    return LocalMathEngine.solveLocal(integral);
   }
 
   @override
@@ -62,12 +63,17 @@ class SolverRemoteDataSourceImpl implements SolverRemoteDataSource {
         data: integral.toJson(),
       );
       if (response.statusCode == 200) {
-        return response.data as Map<String, dynamic>;
+        final data = response.data as Map<String, dynamic>;
+        if (data.isNotEmpty && data['vertices'] != null) {
+          return data;
+        }
       }
-      return {};
     } catch (_) {
-      return {};
+      // Fallback
     }
+
+    // Fallback: Generate 3D mesh points in Dart
+    return LocalMathEngine.generateLocalMesh(integral);
   }
 
   @override
@@ -83,10 +89,10 @@ class SolverRemoteDataSourceImpl implements SolverRemoteDataSource {
             .map((s) => PedagogicalSection.fromJson(s as Map<String, dynamic>))
             .toList();
       }
-      return [];
     } catch (_) {
-      return [];
+      // Fallback
     }
+    return [];
   }
 
   @override
@@ -94,11 +100,12 @@ class SolverRemoteDataSourceImpl implements SolverRemoteDataSource {
     try {
       final response = await dio.get(ApiConstants.presetsEndpoint);
       if (response.statusCode == 200) {
-        return List<Map<String, dynamic>>.from(response.data as List);
+        final list = List<Map<String, dynamic>>.from(response.data as List);
+        if (list.isNotEmpty) return list;
       }
-      return [];
     } catch (_) {
-      return [];
+      // Fallback
     }
+    return LocalMathEngine.builtInPresets;
   }
 }
