@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/math_colors.dart';
 import '../../../calculator/domain/entities/multivariable_integral.dart';
 import '../../../solver/presentation/providers/solver_provider.dart';
 import '../../../solver/presentation/widgets/latex_card.dart';
@@ -37,35 +38,44 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
   Widget build(BuildContext context) {
     final state = ref.watch(solverProvider);
     final notifier = ref.read(solverProvider.notifier);
+    final mathColors = context.mathColors;
 
     if (_integrandController.text != state.currentIntegral.integrand) {
       _integrandController.text = state.currentIntegral.integrand;
     }
 
     return Scaffold(
+      backgroundColor: AppColors.deepVoid,
       appBar: AppBar(
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                color: AppTheme.primaryBlue.withAlpha(40),
+                color: mathColors.primaryAction.withAlpha(35),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.primaryBlue.withAlpha(80)),
+                border: Border.all(color: mathColors.primaryAction.withAlpha(90)),
               ),
-              child: const Icon(Icons.architecture_rounded, color: AppTheme.primaryBlueLight, size: 20),
+              child: Icon(Icons.hub_rounded, color: mathColors.primaryAction, size: 20),
             ),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Integra3D',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textLight),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: mathColors.formulaText,
+                  ),
                 ),
                 Text(
-                  'Cálculo Multivariable & Topología 3D',
-                  style: TextStyle(fontSize: 10, color: AppTheme.textMuted.withAlpha(200)),
+                  'Cálculo Multivariable & Spectral 3D',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: mathColors.metadataText,
+                  ),
                 ),
               ],
             ),
@@ -78,13 +88,13 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: state.isBackendConnected
-                  ? AppTheme.accentEmerald.withAlpha(25)
-                  : AppTheme.accentGold.withAlpha(25),
+                  ? mathColors.primaryAction.withAlpha(25)
+                  : mathColors.mathWarning.withAlpha(25),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: state.isBackendConnected
-                    ? AppTheme.accentEmerald.withAlpha(120)
-                    : AppTheme.accentGold.withAlpha(120),
+                    ? mathColors.primaryAction.withAlpha(120)
+                    : mathColors.mathWarning.withAlpha(120),
                 width: 1,
               ),
             ),
@@ -94,7 +104,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 Icon(
                   Icons.circle,
                   size: 8,
-                  color: state.isBackendConnected ? AppTheme.accentEmerald : AppTheme.accentGold,
+                  color: state.isBackendConnected
+                      ? mathColors.primaryAction
+                      : mathColors.mathWarning,
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -102,14 +114,16 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: state.isBackendConnected ? AppTheme.accentEmerald : AppTheme.accentGold,
+                    color: state.isBackendConnected
+                        ? mathColors.primaryAction
+                        : mathColors.mathWarning,
                   ),
                 ),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.sync_rounded, size: 20, color: AppTheme.textMuted),
+            icon: Icon(Icons.sync_rounded, size: 20, color: mathColors.metadataText),
             tooltip: 'Sincronizar conexión',
             onPressed: () => notifier.checkConnectionAndSync(),
           ),
@@ -120,28 +134,28 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
         child: Column(
           children: [
             // Preset problems bar
-            _buildPresetBar(state, notifier),
+            _buildPresetBar(state, notifier, mathColors),
 
-            // Refined Segmented Tab Bar
+            // Refined Segmented Tab Bar (Dark Matrix)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceDark,
+                color: AppColors.slateDark,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.cardBorder),
+                border: Border.all(color: AppColors.borderSubtle),
               ),
               child: TabBar(
                 controller: _tabController,
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 indicator: BoxDecoration(
-                  color: AppTheme.surfaceElevated,
+                  color: AppColors.slateElevated,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.primaryBlue.withAlpha(120), width: 1),
+                  border: Border.all(color: mathColors.secondaryAccent.withAlpha(140), width: 1),
                 ),
-                labelColor: Colors.white,
-                unselectedLabelColor: AppTheme.textMuted,
+                labelColor: AppColors.pureWhite,
+                unselectedLabelColor: mathColors.metadataText,
                 labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
                 tabs: const [
                   Tab(icon: Icon(Icons.edit_outlined, size: 16), text: 'Editor'),
@@ -157,9 +171,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildEditorTab(state, notifier),
-                  _buildSolutionTab(state),
-                  _buildStepsTab(state),
+                  _buildEditorTab(state, notifier, mathColors),
+                  _buildSolutionTab(state, mathColors),
+                  _buildStepsTab(state, mathColors),
                   _build3DViewportTab(state),
                 ],
               ),
@@ -170,7 +184,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     );
   }
 
-  Widget _buildPresetBar(SolverState state, SolverNotifier notifier) {
+  Widget _buildPresetBar(SolverState state, SolverNotifier notifier, MathColors mathColors) {
     if (state.presets.isEmpty) return const SizedBox.shrink();
 
     return Container(
@@ -188,22 +202,30 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             padding: const EdgeInsets.only(right: 6.0),
             child: ActionChip(
               visualDensity: VisualDensity.compact,
-              backgroundColor: AppTheme.surfaceDark,
-              side: const BorderSide(color: AppTheme.cardBorder),
+              backgroundColor: AppColors.slateDark,
+              side: const BorderSide(color: AppColors.borderSubtle),
               avatar: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue.withAlpha(40),
+                  color: mathColors.secondaryAccent.withAlpha(35),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   '${dim}D',
-                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primaryBlueLight),
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: mathColors.secondaryAccent,
+                  ),
                 ),
               ),
               label: Text(
                 name,
-                style: const TextStyle(fontSize: 11, color: AppTheme.textLight, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.pureWhite,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               onPressed: () {
                 notifier.loadPreset(preset);
@@ -216,7 +238,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     );
   }
 
-  Widget _buildEditorTab(SolverState state, SolverNotifier notifier) {
+  Widget _buildEditorTab(SolverState state, SolverNotifier notifier, MathColors mathColors) {
     final integral = state.currentIntegral;
 
     return SingleChildScrollView(
@@ -229,9 +251,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           Container(
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceDark,
+              color: AppColors.slateDark,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.cardBorder),
+              border: Border.all(color: AppColors.borderSubtle),
             ),
             child: Row(
               children: [
@@ -242,9 +264,11 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
-                        color: integral.dimension == 2 ? AppTheme.surfaceElevated : Colors.transparent,
+                        color: integral.dimension == 2 ? AppColors.slateElevated : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
-                        border: integral.dimension == 2 ? Border.all(color: AppTheme.primaryBlue.withAlpha(120)) : null,
+                        border: integral.dimension == 2
+                            ? Border.all(color: mathColors.secondaryAccent.withAlpha(140))
+                            : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
@@ -252,7 +276,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: integral.dimension == 2 ? AppTheme.primaryBlueLight : AppTheme.textMuted,
+                          color: integral.dimension == 2
+                              ? mathColors.secondaryAccent
+                              : mathColors.metadataText,
                         ),
                       ),
                     ),
@@ -265,9 +291,11 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
-                        color: integral.dimension == 3 ? AppTheme.surfaceElevated : Colors.transparent,
+                        color: integral.dimension == 3 ? AppColors.slateElevated : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
-                        border: integral.dimension == 3 ? Border.all(color: AppTheme.primaryBlue.withAlpha(120)) : null,
+                        border: integral.dimension == 3
+                            ? Border.all(color: mathColors.secondaryAccent.withAlpha(140))
+                            : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
@@ -275,7 +303,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: integral.dimension == 3 ? AppTheme.primaryBlueLight : AppTheme.textMuted,
+                          color: integral.dimension == 3
+                              ? mathColors.secondaryAccent
+                              : mathColors.metadataText,
                         ),
                       ),
                     ),
@@ -289,9 +319,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           // Coordinate system dropdown
           DropdownButtonFormField<CoordinateSystemType>(
             initialValue: integral.coordinateSystem,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Sistema de Coordenadas & Elemento de Volumen',
-              prefixIcon: Icon(Icons.language_rounded, size: 18, color: AppTheme.primaryBlueLight),
+              prefixIcon: Icon(Icons.scatter_plot_rounded, size: 18, color: mathColors.secondaryAccent),
             ),
             items: CoordinateSystemType.values.map((sys) {
               return DropdownMenuItem(
@@ -308,10 +338,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           // Integrand input
           TextField(
             controller: _integrandController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Función Integrando f(x, y, z)',
               hintText: 'Ej: 4 - x^2 - y^2 o exp(-x^2 - y^2)',
-              prefixIcon: Icon(Icons.calculate_outlined, size: 18, color: AppTheme.primaryBlueLight),
+              prefixIcon: Icon(Icons.functions_rounded, size: 18, color: mathColors.secondaryAccent),
             ),
             onChanged: (val) => notifier.updateIntegrand(val),
           ),
@@ -321,13 +351,20 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Límites de Integración Iterada:',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMuted),
-              ),
               Text(
-                '${integral.dimension} variables',
-                style: const TextStyle(fontSize: 11, color: AppTheme.primaryBlueLight),
+                'Límites de Integración Iterada:',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: mathColors.metadataText),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: mathColors.secondaryAccent.withAlpha(25),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${integral.dimension} capas',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mathColors.secondaryAccent),
+                ),
               ),
             ],
           ),
@@ -336,15 +373,15 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           ...List.generate(integral.bounds.length, (index) {
             final bound = integral.bounds[index];
             final orderLabel = index == 0
-                ? 'Interior (Primero)'
-                : (index == integral.bounds.length - 1 ? 'Exterior (Final)' : 'Intermedio');
+                ? 'Interior'
+                : (index == integral.bounds.length - 1 ? 'Exterior' : 'Intermedio');
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceDark,
+                color: AppColors.slateDark,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.cardBorder),
+                border: Border.all(color: AppColors.borderSubtle),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,9 +391,13 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                     children: [
                       Text(
                         'd${bound.variable} — $orderLabel',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.primaryBlueLight),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: mathColors.secondaryAccent,
+                        ),
                       ),
-                      Text('Capa ${index + 1}', style: const TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                      Text('Nivel ${index + 1}', style: TextStyle(fontSize: 10, color: mathColors.metadataText)),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -385,10 +426,14 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           }),
           const SizedBox(height: 12),
 
-          // Primary Solve Button
+          // Primary Solve Button (Cyber Emerald)
           ElevatedButton.icon(
-            icon: const Icon(Icons.play_arrow_rounded, size: 20),
-            label: const Text('RESOLVER Y GRAFICAR EN 3D'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: mathColors.primaryAction,
+              foregroundColor: AppColors.deepVoid,
+            ),
+            icon: const Icon(Icons.bolt_rounded, size: 20),
+            label: const Text('CALCULAR Y PROYECTAR EN 3D'),
             onPressed: () {
               notifier.solve();
               _tabController.animateTo(1);
@@ -400,11 +445,11 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     );
   }
 
-  Widget _buildSolutionTab(SolverState state) {
+  Widget _buildSolutionTab(SolverState state, MathColors mathColors) {
     return state.solutionState.when(
       data: (solution) {
         if (solution == null) {
-          return const Center(child: Text('Presiona Resolver en el Editor.'));
+          return const Center(child: Text('Presiona Calcular en el Editor.'));
         }
 
         return SingleChildScrollView(
@@ -436,22 +481,22 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppTheme.surfaceDark,
+                      color: AppColors.slateDark,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppTheme.cardBorder),
+                      border: Border.all(color: AppColors.borderSubtle),
                     ),
                     child: Text(
                       'Tiempo: ${solution.executionTimeMs.toStringAsFixed(1)} ms',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.accentEmerald),
+                      style: TextStyle(fontSize: 11, color: mathColors.primaryAction, fontWeight: FontWeight.bold),
                     ),
                   ),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      side: const BorderSide(color: AppTheme.cardBorder),
+                      side: const BorderSide(color: AppColors.borderSubtle),
                     ),
-                    icon: const Icon(Icons.view_in_ar_rounded, size: 14, color: AppTheme.primaryBlueLight),
-                    label: const Text('Ver en 3D', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
+                    icon: Icon(Icons.view_in_ar_rounded, size: 14, color: mathColors.secondaryAccent),
+                    label: const Text('Ver en 3D', style: TextStyle(fontSize: 11, color: AppColors.pureWhite)),
                     onPressed: () => _tabController.animateTo(3),
                   ),
                 ],
@@ -460,30 +505,30 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
 
               // Conceptual Didactic sections
               if (solution.didacticSections != null && solution.didacticSections!.isNotEmpty) ...[
-                const Text(
+                Text(
                   'Fundamento Teórico y Conceptual:',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.primaryBlueLight),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: mathColors.secondaryAccent),
                 ),
                 const SizedBox(height: 8),
                 ...solution.didacticSections!.map((sec) => Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppTheme.surfaceDark,
+                    color: AppColors.slateDark,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.cardBorder),
+                    border: Border.all(color: AppColors.borderSubtle),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         sec.title,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textLight),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.pureWhite),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         sec.content,
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.4),
+                        style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.45),
                       ),
                     ],
                   ),
@@ -493,27 +538,27 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           ),
         );
       },
-      loading: () => const Center(
+      loading: () => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(color: AppTheme.primaryBlue),
-            SizedBox(height: 14),
-            Text('Procesando cálculo iterado...', style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+            CircularProgressIndicator(color: mathColors.primaryAction),
+            const SizedBox(height: 14),
+            Text('Procesando cálculo iterado...', style: TextStyle(color: mathColors.metadataText, fontSize: 13)),
           ],
         ),
       ),
       error: (err, _) => Center(
-        child: Text('Error: $err', style: const TextStyle(color: AppTheme.textMuted)),
+        child: Text('Error: $err', style: TextStyle(color: mathColors.metadataText)),
       ),
     );
   }
 
-  Widget _buildStepsTab(SolverState state) {
+  Widget _buildStepsTab(SolverState state, MathColors mathColors) {
     final solution = state.solutionState.asData?.value;
     if (solution == null || solution.steps.isEmpty) {
-      return const Center(
-        child: Text('No hay pasos calculados aún.', style: TextStyle(color: AppTheme.textMuted)),
+      return Center(
+        child: Text('No hay pasos calculados aún.', style: TextStyle(color: mathColors.metadataText)),
       );
     }
 
@@ -523,54 +568,82 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
       itemCount: solution.steps.length,
       itemBuilder: (context, index) {
         final step = solution.steps[index];
+        final isZ = step.variable == 'z';
+        final isY = step.variable == 'y';
+        final axisColor = isZ
+            ? mathColors.axisZ
+            : (isY ? mathColors.axisY : mathColors.axisX);
+
         return Container(
           margin: const EdgeInsets.only(bottom: 14),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppTheme.surfaceDark,
+            color: AppColors.slateDark,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.cardBorder),
+            border: Border.all(color: AppColors.borderSubtle),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryBlue,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${step.stepNumber}',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: mathColors.primaryAction,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${step.stepNumber}',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.deepVoid),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Integración respecto a d${step.variable}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Integración respecto a d${step.variable}',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textLight),
+                  // Axis canonical tag
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: axisColor.withAlpha(25),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: axisColor.withAlpha(120)),
+                    ),
+                    child: Text(
+                      'Eje ${step.variable.toUpperCase()}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: axisColor,
+                      ),
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(step.explanation, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-              const Divider(color: AppTheme.cardBorder, height: 20),
+              Text(step.explanation, style: TextStyle(fontSize: 11, color: mathColors.metadataText)),
+              const Divider(color: AppColors.borderSubtle, height: 20),
 
-              const Text('Antiderivada parcial:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryBlueLight)),
+              Text('1. Antiderivada parcial:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.secondaryAccent)),
               const SizedBox(height: 4),
               LatexCard(latex: '\\int f \\, d${step.variable} = ${step.antiderivativeLatex}'),
 
               const SizedBox(height: 8),
-              const Text('Evaluación en límites [a, b]:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryBlueLight)),
+              Text('2. Evaluación de límites [a, b]:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.secondaryAccent)),
               const SizedBox(height: 4),
               LatexCard(latex: step.evaluatedLatex),
 
               const SizedBox(height: 8),
-              const Text('Resultado simplificado:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.accentGold)),
+              Text('3. Resultado simplificado:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.mathWarning)),
               const SizedBox(height: 4),
               LatexCard(latex: step.simplifiedResultLatex, isHighlight: true),
             ],

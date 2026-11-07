@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
-import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/app_colors.dart';
 
 class LatexCard extends StatelessWidget {
   final String latex;
@@ -27,11 +27,13 @@ class LatexCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isHighlight
-            ? AppTheme.primaryBlue.withAlpha(25)
-            : AppTheme.surfaceDark,
+            ? AppColors.electricCyan.withAlpha(20)
+            : AppColors.slateDark,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isHighlight ? AppTheme.primaryBlue.withAlpha(160) : AppTheme.cardBorder,
+          color: isHighlight
+              ? AppColors.electricCyan.withAlpha(160)
+              : AppColors.borderSubtle,
           width: isHighlight ? 1.4 : 1.0,
         ),
       ),
@@ -49,7 +51,7 @@ class LatexCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: isHighlight ? AppTheme.primaryBlueLight : AppTheme.textMuted,
+                      color: isHighlight ? AppColors.electricCyan : AppColors.mutedGray,
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -69,9 +71,9 @@ class LatexCard extends StatelessWidget {
                       padding: const EdgeInsets.all(4.0),
                       child: Row(
                         children: const [
-                          Icon(Icons.content_copy_rounded, size: 13, color: AppTheme.textMuted),
+                          Icon(Icons.content_copy_rounded, size: 13, color: AppColors.mutedGray),
                           SizedBox(width: 4),
-                          Text('LaTeX', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                          Text('LaTeX', style: TextStyle(fontSize: 10, color: AppColors.mutedGray)),
                         ],
                       ),
                     ),
@@ -91,14 +93,14 @@ class LatexCard extends StatelessWidget {
                     textStyle: mathStyle ??
                         TextStyle(
                           fontSize: isHighlight ? 19 : 16,
-                          color: isHighlight ? AppTheme.textLight : AppTheme.textLight,
+                          color: AppColors.pureWhite,
                           fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
                         ),
                     onErrorFallback: (err) => SelectableText(
                       latex,
                       style: const TextStyle(
                         fontFamily: 'monospace',
-                        color: AppTheme.accentGold,
+                        color: AppColors.amberGlow,
                         fontSize: 13,
                       ),
                     ),
@@ -112,7 +114,7 @@ class LatexCard extends StatelessWidget {
                 subtitle!,
                 style: const TextStyle(
                   fontSize: 12,
-                  color: AppTheme.accentGold,
+                  color: AppColors.amberGlow,
                   fontWeight: FontWeight.w500,
                 ),
               ),

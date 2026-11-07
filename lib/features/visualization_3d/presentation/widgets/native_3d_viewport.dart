@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../painters/native_3d_painter.dart';
 
@@ -156,11 +157,11 @@ class _Native3DViewportState extends State<Native3DViewport>
                   const SizedBox(height: 4),
                   Row(
                     children: const [
-                      Text('■ X ', style: TextStyle(color: Color(0xFFEF4444), fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('■ Eje X ', style: TextStyle(color: AppColors.coralFlame, fontSize: 10, fontWeight: FontWeight.bold)),
                       SizedBox(width: 8),
-                      Text('■ Y ', style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('■ Eje Y ', style: TextStyle(color: AppColors.limePhosphor, fontSize: 10, fontWeight: FontWeight.bold)),
                       SizedBox(width: 8),
-                      Text('■ Z (Altura)', style: TextStyle(color: Color(0xFF3B82F6), fontSize: 11, fontWeight: FontWeight.bold)),
+                      Text('■ Eje Z (Cotas)', style: TextStyle(color: AppColors.neonSky, fontSize: 10, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ],
@@ -231,7 +232,7 @@ class _Native3DViewportState extends State<Native3DViewport>
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: active ? AppTheme.primaryBlue : AppTheme.darkBackground.withAlpha(220),
+        color: active ? AppColors.cyberEmerald : AppTheme.darkBackground.withAlpha(220),
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
@@ -240,14 +241,14 @@ class _Native3DViewportState extends State<Native3DViewport>
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               border: Border.all(
-                color: active ? AppTheme.primaryBlue : AppTheme.cardBorder,
+                color: active ? AppColors.cyberEmerald : AppTheme.cardBorder,
               ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
               size: 18,
-              color: active ? Colors.white : AppTheme.textLight,
+              color: active ? AppColors.deepVoid : AppTheme.textLight,
             ),
           ),
         ),

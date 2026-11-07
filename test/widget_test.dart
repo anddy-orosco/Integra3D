@@ -51,6 +51,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Integra3D'), findsOneWidget);
-    expect(find.text('RESOLVER Y GRAFICAR EN 3D'), findsOneWidget);
+    expect(find.text('CALCULAR Y PROYECTAR EN 3D'), findsOneWidget);
   });
 }

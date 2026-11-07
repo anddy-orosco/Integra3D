@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
 
 class Triangle3D {
   final List<Offset> points2D;
@@ -72,7 +73,7 @@ class Native3DCanvasPainter extends CustomPainter {
     // 1. Draw XY Grid
     if (showGrid) {
       final gridPaint = Paint()
-        ..color = const Color(0x2264748B)
+        ..color = AppColors.borderSubtle.withAlpha(90)
         ..strokeWidth = 1.0;
 
       const int gridLines = 5;
@@ -88,28 +89,28 @@ class Native3DCanvasPainter extends CustomPainter {
       }
     }
 
-    // 2. Draw 3D Coordinate Axes (X = Red, Y = Green, Z = Blue)
+    // 2. Draw 3D Coordinate Axes (X = Coral Flame, Y = Lime Phosphor, Z = Neon Sky)
     if (showAxes) {
       final origin = project(0, 0, 0);
-      final axisLength = 4.0;
+      const axisLength = 4.0;
 
-      // Axis X (Red / Crimson)
+      // Axis X (Coral Flame / î)
       final xEnd = project(axisLength, 0, 0);
-      final xPaint = Paint()..color = const Color(0xFFEF4444)..strokeWidth = 2.5;
+      final xPaint = Paint()..color = AppColors.coralFlame..strokeWidth = 2.5;
       canvas.drawLine(origin, xEnd, xPaint);
-      _drawText(canvas, 'X', xEnd + const Offset(4, -4), const Color(0xFFEF4444));
+      _drawText(canvas, 'X (î)', xEnd + const Offset(4, -4), AppColors.coralFlame);
 
-      // Axis Y (Emerald Green)
+      // Axis Y (Lime Phosphor / ĵ)
       final yEnd = project(0, axisLength, 0);
-      final yPaint = Paint()..color = const Color(0xFF10B981)..strokeWidth = 2.5;
+      final yPaint = Paint()..color = AppColors.limePhosphor..strokeWidth = 2.5;
       canvas.drawLine(origin, yEnd, yPaint);
-      _drawText(canvas, 'Y', yEnd + const Offset(4, -4), const Color(0xFF10B981));
+      _drawText(canvas, 'Y (ĵ)', yEnd + const Offset(4, -4), AppColors.limePhosphor);
 
-      // Axis Z (Royal Blue / Height)
+      // Axis Z (Neon Sky / k̂)
       final zEnd = project(0, 0, axisLength);
-      final zPaint = Paint()..color = const Color(0xFF3B82F6)..strokeWidth = 2.8;
+      final zPaint = Paint()..color = AppColors.neonSky..strokeWidth = 2.8;
       canvas.drawLine(origin, zEnd, zPaint);
-      _drawText(canvas, 'Z (Altura)', zEnd + const Offset(4, -14), const Color(0xFF60A5FA));
+      _drawText(canvas, 'Z (k̂ Cotas)', zEnd + const Offset(4, -14), AppColors.neonSky);
     }
 
     if (vertices.isEmpty || indices.isEmpty) return;
@@ -207,28 +208,28 @@ class Native3DCanvasPainter extends CustomPainter {
     // Normalization (-2 to 4)
     final t = ((z + 2.0) / 6.0).clamp(0.0, 1.0);
 
-    // Color ramp: Deep Slate/Indigo -> Academic Cyan -> Vibrant Amber
+    // Color ramp Spectral 3D: Violet Heatmap (#8B5CF6) -> Electric Cyan (#06B6D4) -> Cyber Emerald (#10B981)
     Color base;
     if (t < 0.5) {
       final factor = t * 2.0;
       base = Color.lerp(
-        const Color(0xFF1E3A8A), // Deep Cobalt Blue
-        const Color(0xFF0284C7), // Academic Sky Blue
+        AppColors.violetHeatmap, // #8B5CF6 (Base/Valles)
+        AppColors.electricCyan,  // #06B6D4 (Nivel Medio)
         factor,
       )!;
     } else {
       final factor = (t - 0.5) * 2.0;
       base = Color.lerp(
-        const Color(0xFF0284C7), // Academic Sky Blue
-        const Color(0xFFF59E0B), // Warm Academic Gold
+        AppColors.electricCyan,  // #06B6D4
+        AppColors.cyberEmerald,  // #10B981 (Cimas / Picos)
         factor,
       )!;
     }
 
-    // Apply directional diffuse lighting (0.4 to 1.0)
+    // Apply directional diffuse lighting (0.45 to 1.0)
     final light = 0.45 + 0.55 * lightFactor;
     return Color.fromARGB(
-      210, // Semi-transparent for volume perception
+      215, // Semi-transparent for volume perception
       (base.r * 255.0 * light).round().clamp(0, 255),
       (base.g * 255.0 * light).round().clamp(0, 255),
       (base.b * 255.0 * light).round().clamp(0, 255),

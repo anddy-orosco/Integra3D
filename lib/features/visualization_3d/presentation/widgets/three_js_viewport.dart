@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 
 class ThreeJsViewport extends StatefulWidget {
@@ -60,7 +61,7 @@ class _ThreeJsViewportState extends State<ThreeJsViewport> {
           WebViewWidget(controller: _controller),
           if (!_isPageLoaded)
             const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+              child: CircularProgressIndicator(color: AppColors.cyberEmerald),
             ),
         ],
       ),
