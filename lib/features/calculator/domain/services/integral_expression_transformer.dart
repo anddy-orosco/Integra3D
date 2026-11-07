@@ -121,35 +121,81 @@ class IntegralExpressionTransformer {
     return result;
   }
 
+  static String _stripOuterParentheses(String s) {
+    String t = s.trim();
+    if (t.startsWith('(') && t.endsWith(')')) {
+      int depth = 0;
+      bool wrapsAll = true;
+      for (int i = 0; i < t.length - 1; i++) {
+        if (t[i] == '(') depth++;
+        if (t[i] == ')') depth--;
+        if (depth == 0) {
+          wrapsAll = false;
+          break;
+        }
+      }
+      if (wrapsAll) {
+        return t.substring(1, t.length - 1).trim();
+      }
+    }
+    return t;
+  }
+
   /// Intenta parsear una cadena completa de integral en LaTeX o texto plano.
   /// Ejemplos:
+  /// - \int_{0}^{1}\int_{0}^{2-2x}(6-2x-y)\,dy\,dx
   /// - \int_{-2}^{1} \int_{0}^{3y-5} x y^2 \, dx \, dy
-  /// - \int_{-2}^1 \int_0^{3y-5} xy^2 dx dy
+  /// - \int_0^1 \int_0^{1-x} \int_0^{1-x-y} 1 \, dz \, dy \, dx
   static MultivariableIntegral? parseFullIntegral(String input) {
     final clean = input.trim();
     if (clean.isEmpty) return null;
 
-    // Detectar si contiene símbolos de integral
     if (!clean.contains(r'\int') && !clean.contains('int')) {
       return null;
     }
 
     try {
-      // Regex flexible para integral doble en LaTeX
-      // \int_{outer_low}^{outer_up} \int_{inner_low}^{inner_up} integrand \, dvar1 \, dvar2
+      // 1. Regex para integral triple
+      final tripleIntRegex = RegExp(
+        r'\\int_\{?([^}^ ]+)\}?\^\{?([^}^ ]+)\}?\s*\\int_\{?([^}^ ]+)\}?\^\{?([^}^ ]+)\}?\s*\\int_\{?([^}^ ]+)\}?\^\{?([^}^ ]+)\}?\s*(.+?)\s*(?:\\,)?\s*d([xyzXYZ])\s*(?:\\,)?\s*d([xyzXYZ])\s*(?:\\,)?\s*d([xyzXYZ])',
+      );
+      final matchTriple = tripleIntRegex.firstMatch(clean);
+      if (matchTriple != null) {
+        final outLow = matchTriple.group(1) ?? '0';
+        final outUpp = matchTriple.group(2) ?? '1';
+        final midLow = matchTriple.group(3) ?? '0';
+        final midUpp = matchTriple.group(4) ?? '1';
+        final inLow = matchTriple.group(5) ?? '0';
+        final inUpp = matchTriple.group(6) ?? '1';
+        final rawIntegrand = _stripOuterParentheses(matchTriple.group(7) ?? '1');
+        final inVar = matchTriple.group(8) ?? 'z';
+        final midVar = matchTriple.group(9) ?? 'y';
+        final outVar = matchTriple.group(10) ?? 'x';
+
+        return MultivariableIntegral(
+          integrand: normalizeExpression(rawIntegrand),
+          bounds: [
+            IntegrationBound(variable: inVar.toLowerCase(), lower: normalizeExpression(inLow), upper: normalizeExpression(inUpp)),
+            IntegrationBound(variable: midVar.toLowerCase(), lower: normalizeExpression(midLow), upper: normalizeExpression(midUpp)),
+            IntegrationBound(variable: outVar.toLowerCase(), lower: normalizeExpression(outLow), upper: normalizeExpression(outUpp)),
+          ],
+          coordinateSystem: CoordinateSystemType.cartesian,
+        );
+      }
+
+      // 2. Regex para integral doble en LaTeX
       final doubleIntRegex = RegExp(
         r'\\int_\{?([^}^ ]+)\}?\^\{?([^}^ ]+)\}?\s*\\int_\{?([^}^ ]+)\}?\^\{?([^}^ ]+)\}?\s*(.+?)\s*(?:\\,)?\s*d([xyzXYZ])\s*(?:\\,)?\s*d([xyzXYZ])',
       );
-
       final match = doubleIntRegex.firstMatch(clean);
       if (match != null) {
         final outLow = match.group(1) ?? '0';
         final outUpp = match.group(2) ?? '1';
         final inLow = match.group(3) ?? '0';
         final inUpp = match.group(4) ?? '1';
-        final rawIntegrand = match.group(5) ?? '1';
-        final inVar = match.group(6) ?? 'x';
-        final outVar = match.group(7) ?? 'y';
+        final rawIntegrand = _stripOuterParentheses(match.group(5) ?? '1');
+        final inVar = match.group(6) ?? 'y';
+        final outVar = match.group(7) ?? 'x';
 
         return MultivariableIntegral(
           integrand: normalizeExpression(rawIntegrand),

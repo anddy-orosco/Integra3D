@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/math_colors.dart';
 import '../../../calculator/presentation/widgets/mathway_formula_editor.dart';
-import '../../../ocr/presentation/widgets/ocr_scanner_modal.dart';
+import '../../../ocr/presentation/widgets/ocr_scanner_sheet.dart';
 import '../../../solver/presentation/providers/solver_provider.dart';
 import '../../../solver/presentation/widgets/latex_card.dart';
 import '../../../visualization_3d/presentation/widgets/native_3d_viewport.dart';
@@ -32,7 +32,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
   }
 
   void _openOcrScanner() {
-    OcrScannerModal.show(
+    OcrScannerSheet.show(
       context,
       onIntegralAccepted: (integral) {
         final notifier = ref.read(solverProvider.notifier);
