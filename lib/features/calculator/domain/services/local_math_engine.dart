@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import '../entities/multivariable_integral.dart';
+import 'math_expression_evaluator.dart';
 import '../../../solver/domain/entities/integral_solution.dart';
 
 /// Motor matemático autónomo de respaldo en Dart.
@@ -334,17 +335,22 @@ class LocalMathEngine {
       }
     }
 
-    // 2. Si es una función arbitraria, calcular aproximación numérica 2D mediante regla de Simpson bidimensional
-    if (integral.dimension == 2) {
+    // 2. Si es una función arbitraria, calcular aproximación numérica 2D mediante cuadratura general
+    if (integral.dimension == 2 && integral.bounds.length >= 2) {
       try {
-        final xBound = integral.bounds[1];
-        final yBound = integral.bounds[0];
-        final xMin = double.tryParse(xBound.lower) ?? -2.0;
-        final xMax = double.tryParse(xBound.upper) ?? 2.0;
-        final yMin = double.tryParse(yBound.lower) ?? -2.0;
-        final yMax = double.tryParse(yBound.upper) ?? 2.0;
+        final innerBound = integral.bounds[0];
+        final outerBound = integral.bounds[1];
 
-        final approx = _simpson2D(integral.integrand, xMin, xMax, yMin, yMax, 30);
+        final approx = _simpson2DGeneral(
+          integrand: integral.integrand,
+          innerVar: innerBound.variable,
+          innerLower: innerBound.lower,
+          innerUpper: innerBound.upper,
+          outerVar: outerBound.variable,
+          outerLower: outerBound.lower,
+          outerUpper: outerBound.upper,
+          n: 30,
+        );
         final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
 
         return IntegralSolution(
@@ -354,33 +360,33 @@ class LocalMathEngine {
           steps: [
             SolverStep(
               stepNumber: 1,
-              variable: yBound.variable,
-              lowerBoundLatex: yBound.lower,
-              upperBoundLatex: yBound.upper,
+              variable: innerBound.variable,
+              lowerBoundLatex: innerBound.lower,
+              upperBoundLatex: innerBound.upper,
               currentIntegrandLatex: integral.integrand,
-              antiderivativeLatex: r'\int ' + integral.integrand + r' \, d' + yBound.variable,
-              evaluatedLatex: r'\text{Aproximación numérica por cuadratura de Simpson}',
-              simplifiedResultLatex: r'F(x) = \int_{y_1}^{y_2} f(x, y) \, dy',
-              explanation: 'Se aproxima la integral interior iterada mediante cuadratura compuesta.',
+              antiderivativeLatex: '\\int ${integral.integrand} \\, d${innerBound.variable}',
+              evaluatedLatex: '\\text{Evaluación en los límites } [${innerBound.lower}, ${innerBound.upper}]',
+              simplifiedResultLatex: 'F(${outerBound.variable}) = \\int_{g_1}^{g_2} f(${innerBound.variable}, ${outerBound.variable}) \\, d${innerBound.variable}',
+              explanation: 'Se evalúa la integral interior iterada con respecto a ${innerBound.variable} respetando sus límites de integración.',
             ),
             SolverStep(
               stepNumber: 2,
-              variable: xBound.variable,
-              lowerBoundLatex: xBound.lower,
-              upperBoundLatex: xBound.upper,
-              currentIntegrandLatex: r'F(x)',
-              antiderivativeLatex: r'\int F(x) \, dx',
-              evaluatedLatex: r'\text{Resultado acumulado } \approx ' + approx.toStringAsFixed(4),
+              variable: outerBound.variable,
+              lowerBoundLatex: outerBound.lower,
+              upperBoundLatex: outerBound.upper,
+              currentIntegrandLatex: 'F(${outerBound.variable})',
+              antiderivativeLatex: '\\int F(${outerBound.variable}) \\, d${outerBound.variable}',
+              evaluatedLatex: '\\text{Resultado acumulado } \\approx ${approx.toStringAsFixed(4)}',
               simplifiedResultLatex: approx.toStringAsFixed(4),
-              explanation: 'Cuadratura final sobre el intervalo exterior.',
+              explanation: 'Integración final sobre el intervalo exterior [${outerBound.lower}, ${outerBound.upper}].',
             ),
           ],
           originalIntegralLatex: _toLatexString(integral),
           executionTimeMs: math.max(ms, 18.0),
           didacticSections: [
             const PedagogicalSection(
-              title: '1. Integración Numérica Autónoma (Motor Local)',
-              content: 'La función fue resuelta localmente en Dart mediante la regla de Simpson 2D de 30 subdivisiones.',
+              title: '1. Integración Iterada Autónoma (Motor Local)',
+              content: 'La integral fue resuelta localmente mediante integración iterada compuesta con soporte completo para límites variables y constantes.',
             ),
           ],
         );
@@ -454,7 +460,11 @@ class LocalMathEngine {
         return 0.0;
       };
     } else {
-      fn = (x, y) => math.sin(x) * math.cos(y);
+      fn = (x, y) {
+        final v = MathExpressionEvaluator.evaluate(integral.integrand, x: x, y: y);
+        if (v.isNaN || v.isInfinite) return 0.0;
+        return v.clamp(-12.0, 12.0);
+      };
     }
 
     final double xMin = -2.5;
@@ -514,44 +524,56 @@ class LocalMathEngine {
     };
   }
 
-  static double _evalMath(String expr, double x, double y) {
-    final clean = _cleanExpr(expr);
-    if (clean == '1') return 1.0;
-    if (clean.contains('4-x^2-y^2') || clean.contains('4-x**2-y**2')) {
-      final r2 = x * x + y * y;
-      return (r2 <= 4.0) ? (4.0 - r2) : 0.0;
-    }
-    if (clean.contains('xy^2') || clean.contains('x*y^2') || clean.contains('xy**2')) {
-      return x * y * y;
-    }
-    if (clean.contains('x^2-y^2') || clean.contains('x**2-y**2')) {
-      return x * x - y * y;
-    }
-    if (clean.contains('exp')) {
-      return math.exp(-(x * x + y * y));
-    }
-    return x * y;
-  }
-
-  static double _simpson2D(
-      String expr, double xMin, double xMax, double yMin, double yMax, int n) {
+  static double _simpson2DGeneral({
+    required String integrand,
+    required String innerVar,
+    required String innerLower,
+    required String innerUpper,
+    required String outerVar,
+    required String outerLower,
+    required String outerUpper,
+    int n = 24,
+  }) {
     if (n % 2 != 0) n++;
-    final hx = (xMax - xMin) / n;
-    final hy = (yMax - yMin) / n;
+    final outMin = MathExpressionEvaluator.evaluate(outerLower);
+    final outMax = MathExpressionEvaluator.evaluate(outerUpper);
+    final hy = (outMax - outMin) / n;
 
-    double total = 0.0;
-    for (int i = 0; i <= n; i++) {
-      final x = xMin + i * hx;
-      final wx = (i == 0 || i == n) ? 1.0 : ((i % 2 == 1) ? 4.0 : 2.0);
+    double outerTotal = 0.0;
+    for (int j = 0; j <= n; j++) {
+      final outVal = outMin + j * hy;
+      final wy = (j == 0 || j == n) ? 1.0 : ((j % 2 == 1) ? 4.0 : 2.0);
 
-      for (int j = 0; j <= n; j++) {
-        final y = yMin + j * hy;
-        final wy = (j == 0 || j == n) ? 1.0 : ((j % 2 == 1) ? 4.0 : 2.0);
-        final val = _evalMath(expr, x, y);
-        total += wx * wy * val;
+      final inMin = MathExpressionEvaluator.evaluate(
+        innerLower,
+        x: outerVar == 'x' ? outVal : 0.0,
+        y: outerVar == 'y' ? outVal : 0.0,
+      );
+      final inMax = MathExpressionEvaluator.evaluate(
+        innerUpper,
+        x: outerVar == 'x' ? outVal : 0.0,
+        y: outerVar == 'y' ? outVal : 0.0,
+      );
+
+      final hx = (inMax - inMin) / n;
+      double innerTotal = 0.0;
+
+      for (int i = 0; i <= n; i++) {
+        final inVal = inMin + i * hx;
+        final wx = (i == 0 || i == n) ? 1.0 : ((i % 2 == 1) ? 4.0 : 2.0);
+
+        final xVal = (innerVar == 'x') ? inVal : outVal;
+        final yVal = (innerVar == 'y') ? inVal : outVal;
+
+        final fVal = MathExpressionEvaluator.evaluate(integrand, x: xVal, y: yVal);
+        innerTotal += wx * fVal;
       }
+
+      final innerIntegralAtNode = innerTotal * (hx / 3.0);
+      outerTotal += wy * innerIntegralAtNode;
     }
-    return total * (hx * hy / 9.0);
+
+    return outerTotal * (hy / 3.0);
   }
 
   static String _cleanExpr(String expr) {
