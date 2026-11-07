@@ -1,31 +1,77 @@
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:integra_3d/core/constants/api_constants.dart';
-import 'package:integra_3d/features/calculator/domain/entities/integration_bound.dart';
-import 'package:integra_3d/features/calculator/domain/entities/multivariable_integral.dart';
-import 'package:integra_3d/features/ocr/domain/entities/ocr_integral_result.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../domain/entities/ocr_integral_result.dart';
+import 'gemini_vision_service.dart';
+
+class OcrNeedsApiKeyException implements Exception {
+  final String message;
+  const OcrNeedsApiKeyException([this.message = 'Se requiere una API Key de Gemini para transcribir fotos arbitrarias con IA.']);
+
+  @override
+  String toString() => message;
+}
 
 abstract class OcrRemoteDataSource {
-  Future<OcrIntegralResult> transcribeImage(XFile imageFile);
+  Future<OcrIntegralResult> transcribeImage(XFile imageFile, {String? customApiKey});
+  Future<String?> getSavedApiKey();
+  Future<void> saveApiKey(String key);
+  Future<void> clearApiKey();
 }
 
 class OcrRemoteDataSourceImpl implements OcrRemoteDataSource {
   final Dio dio;
+  final GeminiVisionService geminiVisionService;
 
-  OcrRemoteDataSourceImpl({Dio? dioClient})
+  OcrRemoteDataSourceImpl({Dio? dioClient, GeminiVisionService? geminiService})
       : dio = dioClient ??
             Dio(
               BaseOptions(
                 baseUrl: ApiConstants.baseUrl,
-                connectTimeout: const Duration(seconds: 4),
+                connectTimeout: const Duration(seconds: 3),
                 receiveTimeout: const Duration(seconds: 12),
               ),
-            );
+            ),
+        geminiVisionService = geminiService ?? GeminiVisionService();
 
   @override
-  Future<OcrIntegralResult> transcribeImage(XFile imageFile) async {
+  Future<String?> getSavedApiKey() => geminiVisionService.getApiKey();
+
+  @override
+  Future<void> saveApiKey(String key) => geminiVisionService.saveApiKey(key);
+
+  @override
+  Future<void> clearApiKey() => geminiVisionService.clearApiKey();
+
+  @override
+  Future<OcrIntegralResult> transcribeImage(XFile imageFile, {String? customApiKey}) async {
+    final bytes = await imageFile.readAsBytes();
+
+    // 1. Primer intento: Gemini Vision AI directo desde Flutter (Android, iOS y Web)
     try {
-      final bytes = await imageFile.readAsBytes();
+      final geminiResult = await geminiVisionService.transcribe(
+        imageBytes: bytes,
+        filename: imageFile.name,
+        customApiKey: customApiKey,
+      );
+      return OcrIntegralResult(
+        dimension: geminiResult.dimension,
+        integrand: geminiResult.integrand,
+        bounds: geminiResult.bounds,
+        coordinateSystem: geminiResult.coordinateSystem,
+        rawLatex: geminiResult.rawLatex,
+        confidence: geminiResult.confidence,
+        imagePath: imageFile.path,
+      );
+    } catch (e) {
+      if (!e.toString().contains('KEY_REQUIRED')) {
+        // Si hay una clave pero falló por cuota o red, relanzar para notificar al usuario
+        rethrow;
+      }
+    }
+
+    // 2. Segundo intento: Servidor Python local si está ejecutándose
+    try {
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(
           bytes,
@@ -45,24 +91,10 @@ class OcrRemoteDataSourceImpl implements OcrRemoteDataSource {
         );
       }
     } catch (_) {
-      // Backend offline -> Fallback to intelligent local sample extraction
+      // Backend local desconectado
     }
 
-    // Heuristic / Autonomous fallback recognition
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    // Si el usuario subió el ejercicio de integral doble con límite variable (Image 3)
-    return OcrIntegralResult(
-      integrand: 'x * y^2',
-      dimension: 2,
-      coordinateSystem: CoordinateSystemType.cartesian,
-      bounds: const [
-        IntegrationBound(variable: 'x', lower: '0', upper: '3*y - 5'),
-        IntegrationBound(variable: 'y', lower: '-2', upper: '1'),
-      ],
-      rawLatex: r'\int_{-2}^{1} \int_{0}^{3y-5} x y^2 \, dx \, dy',
-      confidence: 0.98,
-      imagePath: imageFile.path,
-    );
+    // 3. Si no hay clave de Gemini y el backend no está disponible, solicitar clave al usuario
+    throw const OcrNeedsApiKeyException();
   }
 }
