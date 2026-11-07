@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 class ApiConstants {
@@ -6,7 +5,7 @@ class ApiConstants {
     if (kIsWeb) {
       return 'http://localhost:8000';
     }
-    if (Platform.isAndroid) {
+    if (defaultTargetPlatform == TargetPlatform.android) {
       // 10.0.2.2 points to host loopback interface in Android Emulator
       return 'http://10.0.2.2:8000';
     }

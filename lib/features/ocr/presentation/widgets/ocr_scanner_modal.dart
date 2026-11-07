@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -32,7 +32,7 @@ class _OcrScannerModalState extends State<OcrScannerModal> {
   final ImagePicker _picker = ImagePicker();
   final OcrRemoteDataSource _ocrDataSource = OcrRemoteDataSourceImpl();
 
-  XFile? _selectedImage;
+  Uint8List? _imageBytes;
   bool _isProcessing = false;
   OcrIntegralResult? _transcriptionResult;
 
@@ -73,8 +73,10 @@ class _OcrScannerModalState extends State<OcrScannerModal> {
       );
       if (file == null) return;
 
+      final bytes = await file.readAsBytes();
+
       setState(() {
-        _selectedImage = file;
+        _imageBytes = bytes;
         _isProcessing = true;
         _transcriptionResult = null;
       });
@@ -363,7 +365,7 @@ class _OcrScannerModalState extends State<OcrScannerModal> {
                   ],
 
                   // Imagen capturada previa (miniatura)
-                  if (_selectedImage != null && !_isProcessing) ...[
+                  if (_imageBytes != null && !_isProcessing) ...[
                     const SizedBox(height: 14),
                     Center(
                       child: ClipRRect(
@@ -371,8 +373,8 @@ class _OcrScannerModalState extends State<OcrScannerModal> {
                         child: Container(
                           constraints: const BoxConstraints(maxHeight: 120),
                           decoration: BoxDecoration(border: Border.all(color: AppColors.borderSubtle)),
-                          child: Image.file(
-                            File(_selectedImage!.path),
+                          child: Image.memory(
+                            _imageBytes!,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                           ),
