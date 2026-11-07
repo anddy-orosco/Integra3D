@@ -12,6 +12,24 @@ enum OcrProviderType {
   academicHeuristicFallback,
 }
 
+class MathOcrApiKeyRequiredException implements Exception {
+  final String message;
+  const MathOcrApiKeyRequiredException([
+    this.message = 'Se requiere una API Key de Google Gemini para transcribir fotos arbitrarias con IA.',
+  ]);
+
+  @override
+  String toString() => message;
+}
+
+class MathOcrTranscriptionException implements Exception {
+  final String message;
+  const MathOcrTranscriptionException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class MathOcrResult {
   final String rawLatex;
   final OcrProviderType provider;
@@ -105,19 +123,23 @@ Ejemplo de salida esperada: \\int_{0}^{1}\\int_{0}^{2-2x}(6-2x-y)\\,dy\\,dx
     onStatusUpdate?.call('Analizando ejercicio con visión multimodal...');
 
     final userKey = await getUserApiKey();
-    final primaryKey = (userKey != null && userKey.isNotEmpty) ? userKey : _communityGeminiPool;
+    final hasUserKey = userKey != null && userKey.trim().isNotEmpty;
+    final primaryKey = hasUserKey ? userKey.trim() : _communityGeminiPool;
+
+    // Si no hay clave real configurada ni por entorno ni por usuario
+    if (!hasUserKey && (_communityGeminiPool.isEmpty || _communityGeminiPool.contains('DemoCommunity'))) {
+      throw const MathOcrApiKeyRequiredException();
+    }
 
     // TIER 1: Proveedor Primario (Gemini Flash oficial Google AI Studio)
     try {
-      if (!primaryKey.contains('DemoCommunity')) {
-        final latex = await _callGeminiFlash(imageBytes, filename, primaryKey);
-        if (_isValidLatex(latex)) {
-          return MathOcrResult(
-            rawLatex: latex,
-            provider: OcrProviderType.geminiFlashPrimary,
-            confidence: 0.98,
-          );
-        }
+      final latex = await _callGeminiFlash(imageBytes, filename, primaryKey);
+      if (_isValidLatex(latex)) {
+        return MathOcrResult(
+          rawLatex: latex,
+          provider: OcrProviderType.geminiFlashPrimary,
+          confidence: 0.98,
+        );
       }
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
@@ -155,17 +177,13 @@ Ejemplo de salida esperada: \\int_{0}^{1}\\int_{0}^{2-2x}(6-2x-y)\\,dy\\,dx
         );
       }
     } catch (_) {
-      // Continuar a fallback canónico local
+      // Continuar al manejo honesto de error
     }
 
-    // TIER 4: Fallback Determinista Educativo Canónico
-    // Garantiza que el estudiante NUNCA reciba un error crudo; produce la integral canónica
-    // con límite variable (exactamente el ejercicio de la foto) lista para ser confirmada y editada.
-    return const MathOcrResult(
-      rawLatex: r'\int_{-2}^{1}\int_{0}^{3y-5}xy^2\,dx\,dy',
-      provider: OcrProviderType.academicHeuristicFallback,
-      confidence: 0.90,
-      providerMessage: 'Transcripción estimada',
+    // NUNCA devolver un resultado falso inventado: si los servicios no pudieron leer la foto,
+    // se notifica con honestidad al usuario para que vuelva a enfocar o use el teclado.
+    throw const MathOcrTranscriptionException(
+      'No se pudo transcribir la integral de la imagen. Verifica que esté nítida y bien iluminada, o ingrésala con el teclado matemático.',
     );
   }
 

@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/math_colors.dart';
 import '../../../calculator/domain/entities/multivariable_integral.dart';
 import '../../../calculator/domain/services/integral_expression_transformer.dart';
+import '../../../calculator/presentation/widgets/keyboard/math_keyboard.dart';
 import '../../domain/services/math_ocr_service.dart';
 
 enum OcrStep {
@@ -16,8 +17,8 @@ enum OcrStep {
 }
 
 /// Modal Sheet estudiantil de escaneo de imágenes y transcripción matemática para Integra3D.
-/// Diseñado bajo la paleta Dark Matrix & Spectral 3D, sin fricción técnica para estudiantes
-/// y con confirmación visual obligatoria antes de resolver y graficar en 3D.
+/// Diseñado bajo la paleta Dark Matrix & Spectral 3D, sin fricción técnica para estudiantes,
+/// con integración de Gemini Flash AI 100% real, manejo honesto de cuota y edición con teclado Mathway.
 class OcrScannerSheet extends StatefulWidget {
   final Function(MultivariableIntegral) onIntegralAccepted;
 
@@ -46,14 +47,34 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
   OcrStep _currentStep = OcrStep.pickImage;
   Uint8List? _compressedImageBytes;
   String _statusMessage = 'Analizando ejercicio con visión multimodal...';
+  String? _errorMessage;
+
+  bool _hasApiKey = false;
+  final TextEditingController _apiKeyInputCtrl = TextEditingController();
 
   // Controlador para el LaTeX detectado y editable por el estudiante
   final TextEditingController _latexController = TextEditingController();
   bool _isEditingLatex = false;
 
   @override
+  void initState() {
+    super.initState();
+    _checkApiKeyStatus();
+  }
+
+  Future<void> _checkApiKeyStatus() async {
+    final hasKey = await _ocrService.hasCustomApiKey();
+    if (mounted) {
+      setState(() {
+        _hasApiKey = hasKey;
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _latexController.dispose();
+    _apiKeyInputCtrl.dispose();
     super.dispose();
   }
 
@@ -62,6 +83,7 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
   // ==========================================
 
   Future<void> _pickImage(ImageSource source) async {
+    setState(() => _errorMessage = null);
     try {
       // Compresión automática en memoria (máximo 800x800 px, calidad 75%)
       final file = await _picker.pickImage(
@@ -80,12 +102,9 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.slateDark,
-            content: Text('No se pudo acceder a la imagen: $e', style: const TextStyle(color: AppColors.coralFlame)),
-          ),
-        );
+        setState(() {
+          _errorMessage = 'No se pudo acceder a la imagen: $e';
+        });
       }
     }
   }
@@ -99,24 +118,48 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
 
     setState(() {
       _currentStep = OcrStep.processing;
-      _statusMessage = 'Analizando ejercicio con visión multimodal...';
+      _statusMessage = 'Analizando ejercicio con visión multimodal (Gemini Flash)...';
+      _errorMessage = null;
     });
 
-    final result = await _ocrService.transcribe(
-      imageBytes: _compressedImageBytes!,
-      onStatusUpdate: (msg) {
-        if (mounted) {
-          setState(() => _statusMessage = msg);
-        }
-      },
-    );
+    try {
+      final result = await _ocrService.transcribe(
+        imageBytes: _compressedImageBytes!,
+        onStatusUpdate: (msg) {
+          if (mounted) {
+            setState(() => _statusMessage = msg);
+          }
+        },
+      );
 
-    if (mounted) {
-      setState(() {
-        _latexController.text = result.rawLatex;
-        _currentStep = OcrStep.confirmAndEdit;
-        _isEditingLatex = false;
-      });
+      if (mounted) {
+        setState(() {
+          _latexController.text = result.rawLatex;
+          _currentStep = OcrStep.confirmAndEdit;
+          _isEditingLatex = false;
+        });
+      }
+    } on MathOcrApiKeyRequiredException {
+      if (mounted) {
+        setState(() {
+          _currentStep = OcrStep.pickImage;
+          _errorMessage = 'Para transcribir fotos arbitrarias con IA se requiere activar una clave gratuita de Google AI Studio.';
+        });
+      }
+    } on MathOcrTranscriptionException catch (e) {
+      if (mounted) {
+        setState(() {
+          _currentStep = OcrStep.pickImage;
+          _errorMessage = e.message;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _currentStep = OcrStep.pickImage;
+          _errorMessage = 'Error de conexión: $e. Verifica tu clave o escribe la fórmula con el teclado.';
+        });
+      }
     }
   }
 
@@ -132,7 +175,6 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
       widget.onIntegralAccepted(parsed);
       Navigator.of(context).pop();
     } else {
-      // Si el LaTeX tiene sintaxis libre, intentar construir integral con normalizador
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: AppColors.slateDark,
@@ -146,8 +188,30 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
   }
 
   // ==========================================
-  // DIÁLOGO BYOK OPCIONAL (Para usuarios técnicos)
+  // GESTIÓN DE CLAVE GEMINI (GRATUITA)
   // ==========================================
+
+  Future<void> _saveApiKeyDirectly(String key) async {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) return;
+
+    await _ocrService.saveUserApiKey(trimmed);
+    _apiKeyInputCtrl.clear();
+    await _checkApiKeyStatus();
+
+    if (mounted) {
+      setState(() => _errorMessage = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.slateDark,
+          content: Text(
+            '✓ Escáner con IA activado correctamente.',
+            style: TextStyle(color: AppColors.cyberEmerald, fontWeight: FontWeight.bold),
+          ),
+        ),
+      );
+    }
+  }
 
   void _showAdvancedSettingsDialog() async {
     final currentKey = await _ocrService.getUserApiKey() ?? '';
@@ -169,7 +233,7 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
               Icon(Icons.tune_rounded, color: AppColors.electricCyan, size: 22),
               SizedBox(width: 8),
               Text(
-                'Opciones avanzadas (BYOK)',
+                'Ajustes de Visión por IA',
                 style: TextStyle(fontSize: 15, color: AppColors.pureWhite, fontWeight: FontWeight.bold),
               ),
             ],
@@ -179,8 +243,8 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'La app opera por defecto con un pool comunitario y servidores de respaldo con failover automático. '
-                'Si eres un usuario técnico y deseas prioridad sin límites de cuota, puedes ingresar tu propia clave de Google AI Studio.',
+                'Google AI Studio proporciona claves de Gemini 1.5 Flash 100% GRATIS (\$0, sin tarjeta de crédito). '
+                'Puedes obtenerla en aistudio.google.com/app/apikey y pegarla aquí:',
                 style: TextStyle(fontSize: 12, color: AppColors.mutedGray, height: 1.4),
               ),
               const SizedBox(height: 12),
@@ -188,7 +252,7 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                 controller: controller,
                 style: const TextStyle(fontSize: 12, color: AppColors.pureWhite, fontFamily: 'monospace'),
                 decoration: InputDecoration(
-                  hintText: 'Tu Gemini API Key (Opcional)',
+                  hintText: 'Pega tu Gemini API Key (AIzaSy...)',
                   hintStyle: const TextStyle(color: AppColors.mutedGray, fontSize: 11),
                   filled: true,
                   fillColor: AppColors.slateElevated,
@@ -202,6 +266,20 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
             ],
           ),
           actions: [
+            if (currentKey.isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await _ocrService.clearUserApiKey();
+                  await _checkApiKeyStatus();
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Clave eliminada.')),
+                    );
+                  }
+                },
+                child: const Text('Eliminar', style: TextStyle(color: AppColors.coralFlame)),
+              ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Cerrar', style: TextStyle(color: AppColors.mutedGray)),
@@ -218,10 +296,11 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                 } else {
                   await _ocrService.clearUserApiKey();
                 }
+                await _checkApiKeyStatus();
                 if (context.mounted) {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Configuración BYOK guardada.')),
+                    const SnackBar(content: Text('Configuración guardada.')),
                   );
                 }
               },
@@ -242,7 +321,7 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
     final mathColors = context.mathColors;
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.92,
+      height: MediaQuery.of(context).size.height * 0.94,
       decoration: const BoxDecoration(
         color: AppColors.deepVoid, // #0D1117
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -295,7 +374,7 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: mathColors.formulaText),
                   ),
                   Text(
-                    'Reconocimiento y visualización 3D',
+                    'Reconocimiento real con IA & Teclado Mathway',
                     style: TextStyle(fontSize: 11, color: mathColors.metadataText),
                   ),
                 ],
@@ -305,8 +384,12 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.tune_rounded, size: 20, color: AppColors.mutedGray),
-                tooltip: 'Opciones avanzadas (BYOK)',
+                icon: Icon(
+                  _hasApiKey ? Icons.vpn_key_rounded : Icons.vpn_key_outlined,
+                  size: 20,
+                  color: _hasApiKey ? AppColors.cyberEmerald : AppColors.mutedGray,
+                ),
+                tooltip: _hasApiKey ? 'Clave de IA configurada' : 'Configurar Clave Gemini',
                 onPressed: _showAdvancedSettingsDialog,
               ),
               IconButton(
@@ -334,28 +417,88 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
   }
 
   // -------------------------------------------------------------
-  // PASO 1: SELECCIÓN LIMPIA (Tomar Foto / Galería)
+  // PASO 1: SELECCIÓN LIMPIA (Tomar Foto / Galería / Activar IA)
   // -------------------------------------------------------------
   Widget _buildPickImageView(MathColors mathColors) {
     return SingleChildScrollView(
       key: const ValueKey('pick_image_view'),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 10),
+          // Banner de alerta de error si ocurrió alguno
+          if (_errorMessage != null) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.coralFlame.withAlpha(25),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.coralFlame.withAlpha(120)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, size: 20, color: AppColors.coralFlame),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(fontSize: 12, color: AppColors.pureWhite, height: 1.3),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 16, color: AppColors.mutedGray),
+                    onPressed: () => setState(() => _errorMessage = null),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Estado de la Clave de Inteligencia Artificial
+          if (!_hasApiKey) ...[
+            _buildApiKeyActivationCard(mathColors),
+            const SizedBox(height: 16),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.cyberEmerald.withAlpha(20),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.cyberEmerald.withAlpha(80)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified_rounded, size: 16, color: AppColors.cyberEmerald),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Visión con IA activa (Google Gemini Flash)',
+                      style: TextStyle(fontSize: 11, color: AppColors.cyberEmerald, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _showAdvancedSettingsDialog,
+                    child: const Text('Cambiar', style: TextStyle(fontSize: 10, color: AppColors.electricCyan)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           Text(
             'Captura tu ejercicio de cálculo',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: mathColors.formulaText),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             'Enfoca la integral doble o triple de tu cuaderno o libro de texto.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
 
           // Dos botones principales grandes
           Row(
@@ -365,7 +508,7 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                   borderRadius: BorderRadius.circular(16),
                   onTap: () => _pickImage(ImageSource.camera),
                   child: Container(
-                    height: 100,
+                    height: 90,
                     decoration: BoxDecoration(
                       color: AppColors.slateDark,
                       borderRadius: BorderRadius.circular(16),
@@ -374,8 +517,8 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.camera_alt_rounded, size: 32, color: mathColors.secondaryAccent),
-                        const SizedBox(height: 8),
+                        Icon(Icons.camera_alt_rounded, size: 28, color: mathColors.secondaryAccent),
+                        const SizedBox(height: 6),
                         Text(
                           'Tomar Foto',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: mathColors.formulaText),
@@ -385,13 +528,13 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () => _pickImage(ImageSource.gallery),
                   child: Container(
-                    height: 100,
+                    height: 90,
                     decoration: BoxDecoration(
                       color: AppColors.slateDark,
                       borderRadius: BorderRadius.circular(16),
@@ -400,10 +543,10 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.photo_library_rounded, size: 32, color: mathColors.primaryAction),
-                        const SizedBox(height: 8),
+                        Icon(Icons.photo_library_rounded, size: 28, color: mathColors.primaryAction),
+                        const SizedBox(height: 6),
                         Text(
-                          'Galería',
+                          'Subir Imagen',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: mathColors.formulaText),
                         ),
                       ],
@@ -414,22 +557,67 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
             ],
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 20),
+
+          // Botón directo para ingresar manualmente con teclado si el usuario no tiene foto
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              setState(() {
+                _latexController.text = r'\int_{0}^{1}\int_{0}^{2-2x}(6-2x-y)\,dy\,dx';
+                _currentStep = OcrStep.confirmAndEdit;
+                _isEditingLatex = true;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.slateElevated,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.electricCyan.withAlpha(80)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.keyboard_alt_outlined, color: AppColors.electricCyan, size: 22),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Escribir con Teclado Matemático',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Ingresa o edita cualquier integral sin tomar fotos',
+                          style: TextStyle(fontSize: 10, color: AppColors.mutedGray),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.mutedGray),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
           Row(
             children: [
               const Expanded(child: Divider(color: AppColors.borderSubtle)),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('O prueba con un ejercicio modelo', style: TextStyle(fontSize: 11, color: mathColors.metadataText)),
+                child: Text('O selecciona una estructura modelo', style: TextStyle(fontSize: 11, color: mathColors.metadataText)),
               ),
               const Expanded(child: Divider(color: AppColors.borderSubtle)),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          // Tarjeta de plantilla canónica rápida
+          // Tarjetas de plantillas canónicas rápidas
           _buildQuickPresetCard(
-            title: 'Integral Doble con Límite Variable (Tipo II)',
+            title: 'Integral Doble Tipo II (Límites en y)',
             latex: r'\int_{-2}^{1}\int_{0}^{3y-5}xy^2\,dx\,dy',
             onTap: () {
               setState(() {
@@ -441,7 +629,7 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
           ),
           const SizedBox(height: 8),
           _buildQuickPresetCard(
-            title: 'Integral Doble Triangular (Tipo I)',
+            title: 'Integral Doble Tipo I (Límites en x)',
             latex: r'\int_{0}^{1}\int_{0}^{2-2x}(6-2x-y)\,dy\,dx',
             onTap: () {
               setState(() {
@@ -450,6 +638,86 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
                 _isEditingLatex = false;
               });
             },
+          ),
+          const SizedBox(height: 8),
+          _buildQuickPresetCard(
+            title: 'Región Circular / Paraboloide',
+            latex: r'\int_{-2}^{2}\int_{-\sqrt{4-x^2}}^{\sqrt{4-x^2}}(4-x^2-y^2)\,dy\,dx',
+            onTap: () {
+              setState(() {
+                _latexController.text = r'\int_{-2}^{2}\int_{-\sqrt{4-x^2}}^{\sqrt{4-x^2}}(4-x^2-y^2)\,dy\,dx';
+                _currentStep = OcrStep.confirmAndEdit;
+                _isEditingLatex = false;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApiKeyActivationCard(MathColors mathColors) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.slateDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.electricCyan.withAlpha(100), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, size: 18, color: AppColors.electricCyan),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Activar Reconocimiento con IA (Google Gemini)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Para que la app transcriba fotos reales de cualquier ejercicio, pega tu clave gratuita de Google AI Studio (\$0, sin tarjeta de crédito):',
+            style: TextStyle(fontSize: 11, color: AppColors.mutedGray, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _apiKeyInputCtrl,
+                  style: const TextStyle(fontSize: 12, color: AppColors.pureWhite, fontFamily: 'monospace'),
+                  decoration: InputDecoration(
+                    hintText: 'Pega tu clave AIzaSy... aquí',
+                    hintStyle: const TextStyle(fontSize: 11, color: AppColors.mutedGray),
+                    filled: true,
+                    fillColor: AppColors.slateElevated,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.cyberEmerald,
+                  foregroundColor: AppColors.deepVoid,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => _saveApiKeyDirectly(_apiKeyInputCtrl.text),
+                child: const Text('Activar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '💡 Obtén tu clave gratis en: aistudio.google.com/app/apikey',
+            style: TextStyle(fontSize: 10, color: AppColors.electricCyan),
           ),
         ],
       ),
@@ -600,194 +868,184 @@ class _OcrScannerSheetState extends State<OcrScannerSheet> {
   // PASO 4: CONFIRMACIÓN Y EDICIÓN VISUAL (CRÍTICO)
   // -------------------------------------------------------------
   Widget _buildConfirmAndEditView(MathColors mathColors) {
-    return SingleChildScrollView(
+    return Column(
       key: const ValueKey('confirm_edit_view'),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Pregunta amigable para el estudiante
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '¿Es esta tu integral?',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: mathColors.formulaText,
-                ),
-              ),
-              TextButton(
-                onPressed: () => setState(() => _currentStep = OcrStep.pickImage),
-                child: const Text('Tomar otra foto', style: TextStyle(fontSize: 11, color: AppColors.mutedGray)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Tarjeta elegante Slate Dark con renderizado KaTeX de la fórmula
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            decoration: BoxDecoration(
-              color: AppColors.slateDark,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: mathColors.secondaryAccent.withAlpha(120), width: 1.5),
-              boxShadow: const [
-                BoxShadow(color: Color(0x1F000000), blurRadius: 10, offset: Offset(0, 4)),
-              ],
-            ),
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: Math.tex(
-                    _latexController.text.isEmpty ? r'\text{?}' : _latexController.text,
-                    textStyle: TextStyle(
-                      fontSize: 22,
-                      color: mathColors.formulaText,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    onErrorFallback: (_) => Text(
-                      _latexController.text,
-                      style: TextStyle(fontSize: 15, color: mathColors.formulaText),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
+                // Pregunta amigable para el estudiante
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.check_circle_rounded, size: 14, color: mathColors.primaryAction),
-                    const SizedBox(width: 6),
                     Text(
-                      'Fórmula estructurada con rigor académico',
-                      style: TextStyle(fontSize: 10, color: mathColors.primaryAction, fontWeight: FontWeight.bold),
+                      '¿Es esta tu integral?',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: mathColors.formulaText,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _currentStep = OcrStep.pickImage),
+                      child: const Text('Tomar otra foto', style: TextStyle(fontSize: 11, color: AppColors.mutedGray)),
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+
+                // Tarjeta elegante Slate Dark con renderizado KaTeX de la fórmula
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.slateDark,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: mathColors.secondaryAccent.withAlpha(120), width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x1F000000), blurRadius: 10, offset: Offset(0, 4)),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Math.tex(
+                          _latexController.text.isEmpty ? r'\text{?}' : _latexController.text,
+                          textStyle: TextStyle(
+                            fontSize: 22,
+                            color: mathColors.formulaText,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          onErrorFallback: (_) => Text(
+                            _latexController.text,
+                            style: TextStyle(fontSize: 15, color: mathColors.formulaText),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_circle_rounded, size: 14, color: mathColors.primaryAction),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Fórmula LaTeX estructurada',
+                            style: TextStyle(fontSize: 10, color: mathColors.primaryAction, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Toggle para corregir fórmula
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _isEditingLatex ? 'Editando con teclado especializado:' : '¿Algún símbolo no coincide?',
+                      style: TextStyle(fontSize: 11, color: mathColors.metadataText),
+                    ),
+                    TextButton.icon(
+                      icon: Icon(
+                        _isEditingLatex ? Icons.check_circle_outline : Icons.edit_rounded,
+                        size: 15,
+                        color: AppColors.electricCyan,
+                      ),
+                      label: Text(
+                        _isEditingLatex ? 'Listo' : 'Corregir fórmula',
+                        style: const TextStyle(fontSize: 12, color: AppColors.electricCyan, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () {
+                        setState(() => _isEditingLatex = !_isEditingLatex);
+                      },
+                    ),
+                  ],
+                ),
+
+                // Campo de texto visible si el estudiante pulsa Corregir
+                if (_isEditingLatex) ...[
+                  Container(
+                    margin: const EdgeInsets.only(top: 4, bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.slateElevated,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.electricCyan.withAlpha(140)),
+                    ),
+                    child: TextField(
+                      controller: _latexController,
+                      style: TextStyle(fontSize: 13, color: mathColors.formulaText, fontFamily: 'monospace'),
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        hintText: r'Ej: \int_{0}^{1}\int_{0}^{2-2x}(6-2x-y)\,dy\,dx',
+                        hintStyle: TextStyle(color: AppColors.mutedGray, fontSize: 11),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+
+                // Botón Principal en Cyber Emerald: RESOLVER Y GRAFICAR EN 3D
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: mathColors.primaryAction, // Cyber Emerald (#10B981)
+                    foregroundColor: AppColors.deepVoid,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 4,
+                  ),
+                  icon: const Icon(Icons.view_in_ar_rounded, size: 20),
+                  label: const Text(
+                    'Resolver y Graficar en 3D',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.3),
+                  ),
+                  onPressed: _submitAndSolve,
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+        ),
 
-          // Botón / Toggle para corregir fórmula
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _isEditingLatex ? 'Ajusta los caracteres necesarios:' : '¿Algún símbolo no coincide?',
-                style: TextStyle(fontSize: 11, color: mathColors.metadataText),
-              ),
-              TextButton.icon(
-                icon: Icon(
-                  _isEditingLatex ? Icons.check_circle_outline : Icons.edit_rounded,
-                  size: 15,
-                  color: AppColors.electricCyan,
-                ),
-                label: Text(
-                  _isEditingLatex ? 'Listo' : 'Corregir fórmula',
-                  style: const TextStyle(fontSize: 12, color: AppColors.electricCyan, fontWeight: FontWeight.bold),
-                ),
-                onPressed: () {
-                  setState(() => _isEditingLatex = !_isEditingLatex);
-                },
-              ),
-            ],
-          ),
-
-          // Campo de edición visible si el estudiante pulsa Corregir
-          if (_isEditingLatex) ...[
-            Container(
-              margin: const EdgeInsets.only(top: 4, bottom: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.slateElevated,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.electricCyan.withAlpha(140)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextField(
-                    controller: _latexController,
-                    style: TextStyle(fontSize: 13, color: mathColors.formulaText, fontFamily: 'monospace'),
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText: r'Ej: \int_{0}^{1}\int_{0}^{2-2x}(6-2x-y)\,dy\,dx',
-                      hintStyle: TextStyle(color: AppColors.mutedGray, fontSize: 11),
+        // Teclado Mathway especializado mostrado en la parte inferior cuando se está editando
+        if (_isEditingLatex) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            color: AppColors.slateDark,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.edit_note_rounded, size: 14, color: AppColors.electricCyan),
+                    SizedBox(width: 6),
+                    Text(
+                      'Teclado Especializado Mathway',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.electricCyan),
                     ),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const Divider(color: AppColors.borderSubtle, height: 12),
-                  // Botones rápidos de inserción para que sea cómodo en móvil
-                  Wrap(
-                    spacing: 6,
-                    children: [
-                      _buildQuickInsertKey('dy dx'),
-                      _buildQuickInsertKey('dx dy'),
-                      _buildQuickInsertKey('^2'),
-                      _buildQuickInsertKey('sqrt()'),
-                      _buildQuickInsertKey('-'),
-                      _buildQuickInsertKey('+'),
-                    ],
-                  ),
-                ],
-              ),
+                  ],
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _isEditingLatex = false),
+                  child: const Text('Ocultar', style: TextStyle(fontSize: 11, color: AppColors.mutedGray)),
+                ),
+              ],
             ),
-          ],
-
-          const SizedBox(height: 20),
-
-          // Botón Principal en Cyber Emerald: RESOLVER Y GRAFICAR EN 3D
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: mathColors.primaryAction, // Cyber Emerald (#10B981)
-              foregroundColor: AppColors.deepVoid,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 4,
-            ),
-            icon: const Icon(Icons.view_in_ar_rounded, size: 22),
-            label: const Text(
-              'Resolver y Graficar en 3D',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.3),
-            ),
-            onPressed: _submitAndSolve,
+          ),
+          MathwayKeyboard(
+            controller: _latexController,
+            onEnter: _submitAndSolve,
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildQuickInsertKey(String token) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(6),
-      onTap: () {
-        final text = _latexController.text;
-        final sel = _latexController.selection;
-        int pos = sel.baseOffset >= 0 ? sel.baseOffset : text.length;
-        final newText = text.replaceRange(pos, pos, token);
-        _latexController.value = TextEditingValue(
-          text: newText,
-          selection: TextSelection.collapsed(offset: pos + token.length),
-        );
-        setState(() {});
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: AppColors.slateDark,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppColors.borderSubtle),
-        ),
-        child: Text(
-          token,
-          style: const TextStyle(fontSize: 10, color: AppColors.pureWhite, fontFamily: 'monospace'),
-        ),
-      ),
+      ],
     );
   }
 }

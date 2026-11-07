@@ -71,6 +71,7 @@ void main() {
       );
 
       final service = MathOcrService(dioClient: dio);
+      await service.saveUserApiKey('AIzaSyValidDummyKeyForTest');
       final statusLogs = <String>[];
 
       final result = await service.transcribe(
@@ -98,6 +99,49 @@ void main() {
       expect(integral.bounds[1].lower, '0');
       expect(integral.bounds[1].upper, '1');
       expect(integral.integrand, '6 - 2*x - y');
+    });
+
+    test('throws MathOcrApiKeyRequiredException when no API key is provided', () async {
+      final service = MathOcrService();
+      expect(
+        () => service.transcribe(
+          imageBytes: Uint8List.fromList([1, 2, 3]),
+          filename: 'test.jpg',
+        ),
+        throwsA(isA<MathOcrApiKeyRequiredException>()),
+      );
+    });
+
+    test('throws MathOcrTranscriptionException when all vision providers fail rather than returning hardcoded mock', () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                response: Response(
+                  requestOptions: options,
+                  statusCode: 500,
+                  statusMessage: 'Server Error',
+                ),
+                type: DioExceptionType.badResponse,
+              ),
+            );
+          },
+        ),
+      );
+
+      final service = MathOcrService(dioClient: dio);
+      await service.saveUserApiKey('AIzaSyValidDummyKeyForTest');
+
+      expect(
+        () => service.transcribe(
+          imageBytes: Uint8List.fromList([1, 2, 3]),
+          filename: 'test.jpg',
+        ),
+        throwsA(isA<MathOcrTranscriptionException>()),
+      );
     });
   });
 }
