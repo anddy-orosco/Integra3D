@@ -69,4 +69,46 @@ void main() {
     expect(solvedIntegral, isNotNull);
     expect(solvedIntegral!.integrand, contains('x'));
   });
+
+  testWidgets('MathwayFormulaEditor detects active argument and allows one-tap exit',
+      (WidgetTester tester) async {
+    final initialIntegral = MultivariableIntegral(
+      integrand: 'sqrt(4 - x^2)',
+      bounds: const [
+        IntegrationBound(variable: 'y', lower: '0', upper: '1'),
+        IntegrationBound(variable: 'x', lower: '0', upper: '1'),
+      ],
+      coordinateSystem: CoordinateSystemType.cartesian,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkMatrixTheme,
+        home: Scaffold(
+          body: MathwayFormulaEditor(
+            initialIntegral: initialIntegral,
+            onSolve: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // The integrand controller text is 'sqrt(4 - x^2)', by default cursor is at 0 or end.
+    // Let's tap '◀' to move cursor inside the parenthesis:
+    await tester.tap(find.text('◀'));
+    await tester.pumpAndSettle();
+
+    // The argument helper badge should be visible!
+    expect(find.text('📍 En argumento: √( ... )'), findsOneWidget);
+    expect(find.text('➔ Salir de función'), findsOneWidget);
+
+    // Tap exit button
+    await tester.tap(find.text('➔ Salir de función'));
+    await tester.pumpAndSettle();
+
+    // After exiting the function, the badge is gone
+    expect(find.text('➔ Salir de función'), findsNothing);
+  });
 }

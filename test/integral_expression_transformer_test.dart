@@ -34,6 +34,27 @@ void main() {
       expect(parsed.bounds[1].lower, '-2');
       expect(parsed.bounds[1].upper, '1');
     });
+
+    test('toDisplayLatex transforms complex user expressions into clean math LaTeX', () {
+      final input = 'xln(x)*exp(-(x^2 + y^2))sqrt(4 - x^2)';
+      final display = IntegralExpressionTransformer.toDisplayLatex(input);
+
+      expect(display, contains(r'\ln(x)'));
+      expect(display, contains(r'e^{-(x^{2} + y^{2})}'));
+      expect(display, contains(r'\sqrt{4 - x^{2}}'));
+      expect(display, isNot(contains('*')));
+    });
+
+    test('formatMathInline prepares math typography with unicode glyphs for interactive cursor', () {
+      final input = 'xln(x)*exp(-(x^2 + y^2))sqrt(4 - x^2)';
+      final inline = IntegralExpressionTransformer.formatMathInline(input);
+
+      expect(inline, contains('√(4 - x²)'));
+      expect(inline, contains('e^(-(x² + y²))'));
+      expect(inline, isNot(contains('*')));
+      expect(inline, isNot(contains('sqrt')));
+      expect(inline, isNot(contains('exp')));
+    });
   });
 
   group('LocalMathEngine Image 3 Rigorous Verification', () {

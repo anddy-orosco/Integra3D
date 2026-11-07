@@ -189,7 +189,7 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
     MathwayKey(label: 'v', insertText: 'v', isSpecialGlyph: true),
     MathwayKey(label: 'w', insertText: 'w', isSpecialGlyph: true),
     MathwayKey(label: 'R', insertText: 'R', isSpecialGlyph: true),
-    MathwayKey(label: 'e^-(x²+y²)', insertText: 'exp(-(x^2 + y^2))', flex: 2),
+    MathwayKey(label: 'e^{-(x²+y²)}', insertText: 'exp(-(x^2 + y^2))', flex: 2),
     MathwayKey(label: 'xy²', insertText: 'x * y^2', flex: 2),
   ];
 
@@ -197,8 +197,8 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
     MathwayKey(label: '123', insertText: '__PAGE_0__', isOrange: true, flex: 1),
     MathwayKey(label: '(', insertText: '(', flex: 1),
     MathwayKey(label: ')', insertText: ')', flex: 1),
-    MathwayKey(label: '^2', insertText: '^2', flex: 1),
-    MathwayKey(label: 'sqrt()', insertText: 'sqrt()', cursorOffset: -1, flex: 2),
+    MathwayKey(label: 'x²', insertText: '^2', flex: 1),
+    MathwayKey(label: '√x', insertText: 'sqrt()', cursorOffset: -1, flex: 2),
     MathwayKey(label: '⇄ dy/dx', insertText: '__SWAP_DIFFERENTIAL__', isOrange: true, flex: 2),
     MathwayKey(label: '◀', insertText: '__LEFT__', isOrange: true, flex: 1),
     MathwayKey(label: '▶', insertText: '__RIGHT__', isOrange: true, flex: 1),
@@ -226,14 +226,14 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
   ];
 
   static const List<MathwayKey> p2Row2 = [
-    MathwayKey(label: 'asin', insertText: 'asin()', cursorOffset: -1),
-    MathwayKey(label: 'acos', insertText: 'acos()', cursorOffset: -1),
-    MathwayKey(label: 'atan', insertText: 'atan()', cursorOffset: -1),
-    MathwayKey(label: 'asec', insertText: 'asec()', cursorOffset: -1),
+    MathwayKey(label: 'sin⁻¹', insertText: 'asin()', cursorOffset: -1),
+    MathwayKey(label: 'cos⁻¹', insertText: 'acos()', cursorOffset: -1),
+    MathwayKey(label: 'tan⁻¹', insertText: 'atan()', cursorOffset: -1),
+    MathwayKey(label: 'sec⁻¹', insertText: 'asec()', cursorOffset: -1),
     MathwayKey(label: 'sinh', insertText: 'sinh()', cursorOffset: -1),
     MathwayKey(label: 'cosh', insertText: 'cosh()', cursorOffset: -1),
     MathwayKey(label: 'tanh', insertText: 'tanh()', cursorOffset: -1),
-    MathwayKey(label: 'exp', insertText: 'exp()', cursorOffset: -1),
+    MathwayKey(label: 'eˣ', insertText: 'exp()', cursorOffset: -1),
     MathwayKey(label: 'ln', insertText: 'ln()', cursorOffset: -1),
     MathwayKey(label: 'log', insertText: 'log()', cursorOffset: -1),
     MathwayKey(label: '2π', insertText: '2*pi'),
@@ -241,9 +241,9 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
   ];
 
   static const List<MathwayKey> p2Row3 = [
-    MathwayKey(label: 'abs', insertText: 'abs()', cursorOffset: -1),
-    MathwayKey(label: 'e^x', insertText: 'exp(x)'),
-    MathwayKey(label: '10^x', insertText: '10^()', cursorOffset: -1),
+    MathwayKey(label: '|x|', insertText: 'abs()', cursorOffset: -1),
+    MathwayKey(label: 'eˣ', insertText: 'exp(x)'),
+    MathwayKey(label: '10ˣ', insertText: '10^()', cursorOffset: -1),
     MathwayKey(label: '√', insertText: 'sqrt()', cursorOffset: -1),
     MathwayKey(label: 'x', insertText: 'x', isSpecialGlyph: true),
     MathwayKey(label: 'y', insertText: 'y', isSpecialGlyph: true),
@@ -421,31 +421,22 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
           text: newText,
           selection: TextSelection.collapsed(offset: start - 1),
         );
-      } else {
-        // Si el cuadrito está vacío, saltar a la ranura anterior
-        widget.onPrevSlot?.call();
       }
       return;
     }
 
-    // Cursor Izquierda
+    // Cursor Izquierda (Navegación carácter a carácter dentro de funciones)
     if (key.insertText == '__LEFT__') {
       if (start > 0) {
         controller.selection = TextSelection.collapsed(offset: start - 1);
-      } else {
-        // Saltar al cuadrito anterior si está en el inicio
-        widget.onPrevSlot?.call();
       }
       return;
     }
 
-    // Cursor Derecha
+    // Cursor Derecha (Navegación carácter a carácter y salida de argumentos)
     if (key.insertText == '__RIGHT__') {
       if (end < text.length) {
         controller.selection = TextSelection.collapsed(offset: end + 1);
-      } else {
-        // Saltar al siguiente cuadrito si está al final
-        widget.onNextSlot?.call();
       }
       return;
     }

@@ -238,4 +238,155 @@ class IntegralExpressionTransformer {
     }
     return integral.integrand;
   }
+
+  /// Convierte una expresión matemática ingresada (como 'xln(x)*exp(-(x^2+y^2))sqrt(4-x^2)')
+  /// a LaTeX visual limpio y académico para renderizado con flutter_math_fork.
+  /// Elimina asteriscos informáticos y muestra funciones, raíces y exponentes como en libros de cálculo.
+  static String toDisplayLatex(String raw) {
+    if (raw.trim().isEmpty) return '';
+
+    String expr = raw.trim();
+
+    // 0. Separar si una variable o número está pegado a una función (ej: xln(x) -> x ln(x), 3sqrt -> 3 sqrt)
+    expr = expr.replaceAllMapped(
+      RegExp(r'([0-9a-zA-Z\)])(sin|cos|tan|sec|csc|cot|ln|log|exp|sqrt|cbrt|abs)'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+
+    // 1. Reemplazar funciones con argumentos balanceados:
+    // exp(...) -> e^{...}
+    expr = _replaceFunctionWithBalancedBrackets(expr, 'exp', (arg) => 'e^{${toDisplayLatex(arg)}}');
+
+    // sqrt(...) -> \sqrt{...}
+    expr = _replaceFunctionWithBalancedBrackets(expr, 'sqrt', (arg) => '\\sqrt{${toDisplayLatex(arg)}}');
+
+    // cbrt(...) -> \sqrt[3]{...}
+    expr = _replaceFunctionWithBalancedBrackets(expr, 'cbrt', (arg) => '\\sqrt[3]{${toDisplayLatex(arg)}}');
+
+    // abs(...) -> |...|
+    expr = _replaceFunctionWithBalancedBrackets(expr, 'abs', (arg) => '|${toDisplayLatex(arg)}|');
+
+    // 2. Eliminar multiplicación explícita innecesaria (*)
+    expr = expr.replaceAllMapped(
+      RegExp(r'(\d+)\s*\*\s*([a-zA-Z\(\\])'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+    expr = expr.replaceAllMapped(
+      RegExp(r'([a-zA-Z\)])\s*\*\s*([a-zA-Z\(\\])'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+    expr = expr.replaceAll('*', ' ');
+
+    // 3. Potencias: x^2 -> x^{2}, ^(arg) -> ^{arg}
+    expr = expr.replaceAllMapped(
+      RegExp(r'\^(\d+)'),
+      (m) => '^{${m.group(1)}}',
+    );
+    expr = expr.replaceAllMapped(
+      RegExp(r'\^\(([^)]+)\)'),
+      (m) => '^{${m.group(1)}}',
+    );
+
+    // 4. Funciones trigonométricas y trascendentes
+    final funcs = [
+      'arcsin', 'arccos', 'arctan', 'arcsec', 'asin', 'acos', 'atan',
+      'sinh', 'cosh', 'tanh',
+      'sin', 'cos', 'tan', 'sec', 'csc', 'cot',
+      'ln', 'log'
+    ];
+    for (final f in funcs) {
+      expr = expr.replaceAllMapped(
+        RegExp('\\b$f\\b'),
+        (m) => '\\$f',
+      );
+    }
+
+    // 5. Símbolos griegos y especiales
+    expr = expr
+        .replaceAll(RegExp(r'\bpi\b'), r'\pi ')
+        .replaceAll(RegExp(r'\btheta\b'), r'\theta ')
+        .replaceAll(RegExp(r'\bphi\b'), r'\phi ')
+        .replaceAll(RegExp(r'\brho\b'), r'\rho ')
+        .replaceAll(RegExp(r'\boo\b'), r'\infty ');
+
+    return expr.trim();
+  }
+
+  /// Reemplaza llamadas a funciones considerando paréntesis balanceados anidados (ej. sqrt(4 - (x-1)^2))
+  static String _replaceFunctionWithBalancedBrackets(
+    String input,
+    String funcName,
+    String Function(String arg) replacer,
+  ) {
+    String str = input;
+    int idx = str.indexOf('$funcName(');
+    while (idx != -1) {
+      int startArg = idx + funcName.length + 1;
+      int depth = 1;
+      int endArg = startArg;
+      while (endArg < str.length && depth > 0) {
+        if (str[endArg] == '(') depth++;
+        if (str[endArg] == ')') depth--;
+        if (depth > 0) endArg++;
+      }
+      if (depth == 0) {
+        String arg = str.substring(startArg, endArg);
+        String replacement = replacer(arg);
+        str = str.replaceRange(idx, endArg + 1, replacement);
+        idx = str.indexOf('$funcName(', idx + replacement.length);
+      } else {
+        // Paréntesis no cerrado aún mientras el usuario escribe
+        String arg = str.substring(startArg);
+        String replacement = replacer(arg);
+        str = str.replaceRange(idx, str.length, replacement);
+        break;
+      }
+    }
+    return str;
+  }
+
+  /// Formatea una expresión para el cursor interactivo en tiempo real.
+  /// Reemplaza texto informático crudo (*, sqrt, exp, ^2) por tipografía matemática limpia (√, ², e^, etc.)
+  static String formatMathInline(String raw) {
+    if (raw.isEmpty) return '';
+
+    String res = raw;
+
+    // 0. Espaciar identificadores pegados a funciones (xln -> x ln)
+    res = res.replaceAllMapped(
+      RegExp(r'([0-9a-zA-Z\)])(sin|cos|tan|sec|csc|cot|ln|log|exp|sqrt|cbrt|abs)'),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+
+    // 1. Reemplazos de funciones con glifos matemáticos
+    res = res
+        .replaceAll('sqrt(', '√(')
+        .replaceAll('cbrt(', '∛(')
+        .replaceAll('exp(', 'e^(')
+        .replaceAll('asin(', 'sin⁻¹(')
+        .replaceAll('acos(', 'cos⁻¹(')
+        .replaceAll('atan(', 'tan⁻¹(')
+        .replaceAll('asec(', 'sec⁻¹(');
+
+    // 2. Potencias comunes
+    res = res
+        .replaceAll('^2', '²')
+        .replaceAll('^3', '³')
+        .replaceAll('^4', '⁴')
+        .replaceAll('^5', '⁵')
+        .replaceAll('^n', 'ⁿ');
+
+    // 3. Multiplicaciones informáticas (*) eliminadas o espaciadas
+    res = res.replaceAll('*', ' ');
+
+    // 4. Símbolos griegos y constantes
+    res = res
+        .replaceAll(RegExp(r'\bpi\b'), 'π')
+        .replaceAll(RegExp(r'\btheta\b'), 'θ')
+        .replaceAll(RegExp(r'\bphi\b'), 'φ')
+        .replaceAll(RegExp(r'\brho\b'), 'ρ')
+        .replaceAll(RegExp(r'\boo\b'), '∞');
+
+    return res;
+  }
 }
