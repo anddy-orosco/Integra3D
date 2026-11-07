@@ -9,6 +9,54 @@ import '../../../solver/domain/entities/integral_solution.dart';
 class LocalMathEngine {
   static final List<Map<String, dynamic>> builtInPresets = [
     {
+      'id': 'image3_double_integral',
+      'name': 'Integral Doble con Límite Variable',
+      'description': 'Integral de x*y² con x ∈ [0, 3y - 5] e y ∈ [-2, 1]',
+      'dimension': 2,
+      'integrand': 'x * y^2',
+      'coordinate_system': 'cartesian',
+      'bounds': [
+        {'variable': 'x', 'lower': '0', 'upper': '3*y - 5'},
+        {'variable': 'y', 'lower': '-2', 'upper': '1'},
+      ],
+      'exact_latex': r'\frac{2469}{20}',
+      'numeric_approx': 123.45,
+      'steps': [
+        {
+          'step_number': 1,
+          'variable': 'x',
+          'lower_bound_latex': '0',
+          'upper_bound_latex': '3y - 5',
+          'current_integrand_latex': r'x y^2',
+          'antiderivative_latex': r'\frac{x^2 y^2}{2}',
+          'evaluated_latex': r'\left[ \frac{x^2 y^2}{2} \right]_0^{3y - 5} = \frac{y^2(3y - 5)^2}{2} = \frac{9y^4 - 30y^3 + 25y^2}{2}',
+          'simplified_result_latex': r'\frac{9y^4 - 30y^3 + 25y^2}{2}',
+          'explanation': 'Se integra con respecto a x tratando a y como constante. Se evalúa el límite superior 3y - 5 y el inferior 0 mediante el Teorema Fundamental del Cálculo.',
+        },
+        {
+          'step_number': 2,
+          'variable': 'y',
+          'lower_bound_latex': '-2',
+          'upper_bound_latex': '1',
+          'current_integrand_latex': r'\frac{9y^4 - 30y^3 + 25y^2}{2}',
+          'antiderivative_latex': r'\frac{9y^5}{10} - \frac{15y^4}{4} + \frac{25y^3}{6}',
+          'evaluated_latex': r'\left( \frac{9}{10} - \frac{15}{4} + \frac{25}{6} \right) - \left( -\frac{288}{10} - 60 - \frac{200}{6} \right) = \frac{79}{60} - \left(-\frac{7328}{60}\right) = \frac{2469}{20}',
+          'simplified_result_latex': r'\frac{2469}{20} = 123.45',
+          'explanation': 'Se integra el polinomio en y en el intervalo exterior [-2, 1] obteniendo exactamente 2469/20.',
+        },
+      ],
+      'sections': [
+        {
+          'title': '1. Región de Integración Tipo II',
+          'content': 'La región en el plano xy está delimitada por límites horizontales: x varía entre 0 y la recta variable x = 3y - 5, mientras que y está fija en [-2, 1].',
+        },
+        {
+          'title': '2. Teorema de Fubini y Resultado Analítico',
+          'content': 'La integral iterada se evalúa secuencialmente produciendo un valor exacto de 2469/20 = 123.45 u³.',
+        },
+      ],
+    },
+    {
       'id': 'paraboloid_cylinder',
       'name': 'Paraboloide Elíptico',
       'description': 'Volumen acotado por z = 4 - x² - y² sobre el plano z = 0',
@@ -386,6 +434,8 @@ class LocalMathEngine {
         final r2 = x * x + y * y;
         return (r2 <= 4.0) ? (4.0 - r2) : 0.0;
       };
+    } else if (cleaned.contains('xy^2') || cleaned.contains('x*y^2') || cleaned.contains('xy**2')) {
+      fn = (x, y) => (x * y * y) * 0.15; // Escala suave para proyección 3D
     } else if (cleaned.contains('x^2-y^2') || cleaned.contains('x**2-y**2')) {
       fn = (x, y) => (x * x - y * y) * 0.5;
     } else if (cleaned.contains('exp')) {
@@ -470,6 +520,9 @@ class LocalMathEngine {
     if (clean.contains('4-x^2-y^2') || clean.contains('4-x**2-y**2')) {
       final r2 = x * x + y * y;
       return (r2 <= 4.0) ? (4.0 - r2) : 0.0;
+    }
+    if (clean.contains('xy^2') || clean.contains('x*y^2') || clean.contains('xy**2')) {
+      return x * y * y;
     }
     if (clean.contains('x^2-y^2') || clean.contains('x**2-y**2')) {
       return x * x - y * y;

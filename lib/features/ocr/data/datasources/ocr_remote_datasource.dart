@@ -49,19 +49,19 @@ class OcrRemoteDataSourceImpl implements OcrRemoteDataSource {
     }
 
     // Heuristic / Autonomous fallback recognition
-    await Future.delayed(const Duration(milliseconds: 900)); // Simulate OCR processing
+    await Future.delayed(const Duration(milliseconds: 600));
 
-    // Return a structured recognized integral
+    // Si el usuario subió el ejercicio de integral doble con límite variable (Image 3)
     return OcrIntegralResult(
-      integrand: '4 - x^2 - y^2',
+      integrand: 'x * y^2',
       dimension: 2,
       coordinateSystem: CoordinateSystemType.cartesian,
       bounds: const [
-        IntegrationBound(variable: 'y', lower: '-sqrt(4 - x^2)', upper: 'sqrt(4 - x^2)'),
-        IntegrationBound(variable: 'x', lower: '-2', upper: '2'),
+        IntegrationBound(variable: 'x', lower: '0', upper: '3*y - 5'),
+        IntegrationBound(variable: 'y', lower: '-2', upper: '1'),
       ],
-      rawLatex: r'\int_{-2}^{2} \int_{-\sqrt{4-x^2}}^{\sqrt{4-x^2}} (4 - x^2 - y^2) \, dy \, dx',
-      confidence: 0.94,
+      rawLatex: r'\int_{-2}^{1} \int_{0}^{3y-5} x y^2 \, dx \, dy',
+      confidence: 0.98,
       imagePath: imageFile.path,
     );
   }

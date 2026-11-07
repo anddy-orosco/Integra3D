@@ -85,6 +85,18 @@ async def get_presets():
     """Returns classic multivariable calculus problems for science fair demonstration."""
     return [
         {
+            "id": "image3_double_integral",
+            "name": "Integral Doble con Límite Variable",
+            "description": "Integral de x*y^2 con x entre 0 y 3y-5, y entre -2 y 1",
+            "dimension": 2,
+            "integrand": "x * y**2",
+            "coordinate_system": "cartesian",
+            "bounds": [
+                {"variable": "x", "lower": "0", "upper": "3*y - 5"},
+                {"variable": "y", "lower": "-2", "upper": "1"}
+            ]
+        },
+        {
             "id": "paraboloid_cylinder",
             "name": "Volumen bajo Paraboloide sobre Cilindro",
             "description": "Volumen acotado por z = 4 - x^2 - y^2 y el plano z = 0",

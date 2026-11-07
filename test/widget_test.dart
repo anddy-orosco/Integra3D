@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:integra_3d/main.dart';
@@ -39,6 +40,11 @@ class FakeSolverRemoteDataSource implements SolverRemoteDataSource {
 
 void main() {
   testWidgets('Integra3D smoke test', (WidgetTester tester) async {
+    // Provide a larger surface size for testing widget layout
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -51,6 +57,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Integra3D'), findsOneWidget);
-    expect(find.text('CALCULAR Y PROYECTAR EN 3D'), findsOneWidget);
+    expect(find.text('Editor'), findsOneWidget);
+    expect(find.text('Solución'), findsOneWidget);
+    expect(find.text('Pasos'), findsOneWidget);
+    expect(find.text('3D View'), findsOneWidget);
+    expect(find.byIcon(Icons.send_rounded), findsOneWidget);
   });
 }
