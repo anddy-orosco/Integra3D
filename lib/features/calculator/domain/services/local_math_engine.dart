@@ -73,6 +73,67 @@ class LocalMathEngine {
       ],
     },
     {
+      'id': 'plane_6_2x_y',
+      'name': 'Integral de Volumen Plano (6 - 2x - y)',
+      'description': 'Integral de 6 - 2x - y sobre la región y ∈ [0, 2 - 2x] y x ∈ [0, 1]',
+      'dimension': 2,
+      'integrand': '6 - 2*x - y',
+      'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre la región donde 0 \le x \le 1 y 0 \le y \le 2 - 2x.',
+      'bounds': [
+        {'variable': 'y', 'lower': '0', 'upper': '2 - 2*x'},
+        {'variable': 'x', 'lower': '0', 'upper': '1'},
+      ],
+      'exact_latex': r'\frac{14}{3}',
+      'numeric_approx': 4.6667,
+      'steps': [
+        {
+          'step_number': 1,
+          'variable': 'y',
+          'lower_bound_latex': '0',
+          'upper_bound_latex': '2 - 2x',
+          'current_integrand_latex': r'6 - 2x - y',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a y)',
+          'step_integral_latex': r'\int_{0}^{2 - 2x} (6 - 2x - y) \, dy',
+          'constant_treatment_text': 'Tratamos a x como una constante e integramos término a término respecto a y:',
+          'antiderivative_work_latex': r'\int (6 - 2x - y) \, dy = 6y - 2xy - \frac{y^2}{2}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites y = 0 y y = 2 - 2x:',
+          'antiderivative_latex': r'6y - 2xy - \frac{y^2}{2}',
+          'evaluated_latex': r'\left[ 6y - 2xy - \frac{y^2}{2} \right]_0^{2 - 2x} = 6(2 - 2x) - 2x(2 - 2x) - \frac{(2 - 2x)^2}{2} = 10 - 12x + 2x^2',
+          'simplified_result_latex': r'10 - 12x + 2x^2',
+          'explanation': 'Se integra respecto a y considerando x como parámetro constante. Evaluamos el límite superior 2 - 2x e inferior 0 y simplificamos los términos polinomiales.',
+          'applied_method': 'Integración Parcial & Fubini',
+        },
+        {
+          'step_number': 2,
+          'variable': 'x',
+          'lower_bound_latex': '0',
+          'upper_bound_latex': '1',
+          'current_integrand_latex': r'10 - 12x + 2x^2',
+          'step_title': 'Paso 2: Resolver la integral externa (con respecto a x)',
+          'step_integral_latex': r'\int_{0}^{1} (10 - 12x + 2x^2) \, dx',
+          'constant_treatment_text': 'Integramos el polinomio resultante respecto a x:',
+          'antiderivative_work_latex': r'\int (10 - 12x + 2x^2) \, dx = 10x - 6x^2 + \frac{2x^3}{3}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = 0 y x = 1:',
+          'antiderivative_latex': r'10x - 6x^2 + \frac{2x^3}{3}',
+          'evaluated_latex': r'\left[ 10x - 6x^2 + \frac{2x^3}{3} \right]_0^1 = 10(1) - 6(1)^2 + \frac{2(1)^3}{3} - 0 = 4 + \frac{2}{3} = \frac{14}{3}',
+          'simplified_result_latex': r'\frac{14}{3} \approx 4.6667',
+          'explanation': 'Se aplica el Teorema Fundamental del Cálculo sobre el intervalo exterior [0, 1] obteniendo exactamente 14/3 u³.',
+          'applied_method': 'Teorema Fundamental del Cálculo',
+        },
+      ],
+      'sections': [
+        {
+          'title': '1. Región Triangular en el Plano xy',
+          'content': 'La región de integración está acotada por los ejes coordenados x = 0, y = 0 y la recta 2x + y = 2.',
+        },
+        {
+          'title': '2. Teorema de Fubini y Volumen',
+          'content': 'El volumen del sólido bajo el plano z = 6 - 2x - y es exactamente 14/3 ≈ 4.6667 u³.',
+        },
+      ],
+    },
+    {
       'id': 'image3_double_integral',
       'name': 'Integral Doble con Límite Variable',
       'description': 'Integral de x*y² con x ∈ [0, 3y - 5] e y ∈ [-2, 1]',
@@ -538,61 +599,130 @@ class LocalMathEngine {
     return 'Esta integral está definida sobre la región donde ${parts.join(" y ")}.';
   }
 
+  static List<String> _splitTerms(String expr) {
+    final clean = expr.trim();
+    final terms = <String>[];
+    int depth = 0;
+    int start = 0;
+
+    for (int i = 0; i < clean.length; i++) {
+      final ch = clean[i];
+      if (ch == '(' || ch == '[') depth++;
+      if (ch == ')' || ch == ']') depth--;
+
+      if (depth == 0 && i > 0 && (ch == '+' || ch == '-')) {
+        final prev = clean[i - 1];
+        if (prev != '*' && prev != '/' && prev != '^' && prev != 'e' && prev != 'E') {
+          terms.add(clean.substring(start, i).trim());
+          start = i;
+        }
+      }
+    }
+    if (start < clean.length) {
+      terms.add(clean.substring(start).trim());
+    }
+    return terms.where((t) => t.isNotEmpty).toList();
+  }
+
+  static String _integrateSingleTerm(String term, String v) {
+    var t = term.trim();
+    if (t.isEmpty) return '0';
+
+    if (t.startsWith('+')) t = t.substring(1).trim();
+    final isNegative = t.startsWith('-');
+    if (isNegative) t = t.substring(1).trim();
+    final prefix = isNegative ? '-' : '';
+
+    if (!t.toLowerCase().contains(v.toLowerCase())) {
+      final disp = IntegralExpressionTransformer.toDisplayLatex(t);
+      if (disp == '1' || disp.isEmpty) return '$prefix$v';
+      return '$prefix$disp $v';
+    }
+
+    if (t.toLowerCase() == v) {
+      return '$prefix\\frac{$v^2}{2}';
+    }
+
+    // Monomial with other variables (e.g. 4*x*y, 2*x^2*y, x*y^2, 4*y, y^3)
+    final vPowRegex = RegExp('^([0-9]*\\.?[0-9]+)?\\s*\\*?\\s*([^$v]*)\\s*\\*?\\s*$v(?:\\^(\\d+))?\\s*\\*?\\s*([^$v]*)\$', caseSensitive: false);
+    final match = vPowRegex.firstMatch(t);
+    if (match != null) {
+      final coeffStr = match.group(1);
+      final preVars = (match.group(2) ?? '').replaceAll('*', '').trim();
+      final powStr = match.group(3);
+      final postVars = (match.group(4) ?? '').replaceAll('*', '').trim();
+
+      final double coeff = (coeffStr != null && coeffStr.isNotEmpty)
+          ? (double.tryParse(coeffStr) ?? 1.0)
+          : 1.0;
+      final int n = (powStr != null && powStr.isNotEmpty)
+          ? (int.tryParse(powStr) ?? 1)
+          : 1;
+
+      final otherVars = '$preVars$postVars'.trim();
+      final int nPlus1 = n + 1;
+
+      final bool isIntCoeff = (coeff == coeff.roundToDouble());
+      final int intCoeff = coeff.toInt();
+
+      if (isIntCoeff && (intCoeff % nPlus1 == 0)) {
+        final div = intCoeff ~/ nPlus1;
+        final divStr = div == 1 ? (otherVars.isEmpty ? '' : otherVars) : (div == -1 ? (otherVars.isEmpty ? '-' : '-$otherVars') : (otherVars.isEmpty ? '$div' : '$div $otherVars'));
+        final vPart = nPlus1 == 1 ? v : '$v^{$nPlus1}';
+        return '$prefix${divStr.isEmpty ? vPart : "$divStr $vPart"}'.replaceAll('  ', ' ').trim();
+      } else {
+        final cStr = isIntCoeff ? '$intCoeff' : '$coeff';
+        final otherStr = otherVars.isEmpty ? '' : '$otherVars ';
+        final vPart = nPlus1 == 1 ? v : '$v^{$nPlus1}';
+        return '$prefix\\frac{$cStr $otherStr$vPart}{$nPlus1}';
+      }
+    }
+
+    if (t.toLowerCase() == 'exp($v)' || t.toLowerCase() == 'e^$v') {
+      return '$prefix e^{$v}';
+    }
+    if (t.toLowerCase() == 'sin($v)') {
+      return isNegative ? '\\cos($v)' : '-\\cos($v)';
+    }
+    if (t.toLowerCase() == 'cos($v)') {
+      return '$prefix\\sin($v)';
+    }
+
+    final disp = IntegralExpressionTransformer.toDisplayLatex(t);
+    return '$prefix\\int ($disp) \\, d$v';
+  }
+
+  static String _combineTerms(List<String> terms) {
+    if (terms.isEmpty) return '0';
+    final sb = StringBuffer();
+    for (int i = 0; i < terms.length; i++) {
+      final t = terms[i].trim();
+      if (i == 0) {
+        sb.write(t);
+      } else {
+        if (t.startsWith('-')) {
+          sb.write(' - ${t.substring(1).trim()}');
+        } else if (t.startsWith('+')) {
+          sb.write(' + ${t.substring(1).trim()}');
+        } else {
+          sb.write(' + $t');
+        }
+      }
+    }
+    return sb.toString();
+  }
+
   static String _findAntiderivative(String integrand, String variable) {
     final clean = integrand.trim();
     final v = variable.toLowerCase();
 
-    // Caso 1: Integrando no depende de la variable (es constante respecto a v)
-    if (!clean.toLowerCase().contains(v)) {
-      final disp = IntegralExpressionTransformer.toDisplayLatex(clean);
-      if (disp == '1' || disp.isEmpty) return v;
-      return '$v \\cdot ($disp)';
+    final terms = _splitTerms(clean);
+    if (terms.length > 1) {
+      final integratedTerms = terms.map((t) => _integrateSingleTerm(t, v)).toList();
+      return _combineTerms(integratedTerms);
     }
 
-    // Caso 2: Integrando es solo la variable 'x', 'y', 'z'
-    if (clean.toLowerCase() == v) {
-      return '\\frac{$v^2}{2}';
-    }
-
-    // Caso 3: Potencia v^n (ej: x^2, x^3)
-    final powRegex = RegExp('^$v\\^(\\d+)\$', caseSensitive: false);
-    final powMatch = powRegex.firstMatch(clean);
-    if (powMatch != null) {
-      final n = int.tryParse(powMatch.group(1)!) ?? 1;
-      final nPlus1 = n + 1;
-      return '\\frac{$v^{$nPlus1}}{$nPlus1}';
-    }
-
-    // Caso 4: Coeficiente por potencia (ej: 4*x^2, 3x, 6x^3)
-    final coeffPowRegex = RegExp('^(\\d+)\\s*\\*?\\s*$v(?:\\^(\\d+))?\$', caseSensitive: false);
-    final coeffMatch = coeffPowRegex.firstMatch(clean);
-    if (coeffMatch != null) {
-      final c = int.tryParse(coeffMatch.group(1)!) ?? 1;
-      final n = coeffMatch.group(2) != null ? (int.tryParse(coeffMatch.group(2)!) ?? 1) : 1;
-      final nPlus1 = n + 1;
-      if (c % nPlus1 == 0) {
-        final div = c ~/ nPlus1;
-        return div == 1 ? '$v^{$nPlus1}' : '$div $v^{$nPlus1}';
-      }
-      return '\\frac{$c $v^{$nPlus1}}{$nPlus1}';
-    }
-
-    // Caso 5: Exponencial e^v o exp(v)
-    if (clean.toLowerCase() == 'exp($v)' || clean.toLowerCase() == 'e^$v') {
-      return 'e^{$v}';
-    }
-
-    // Caso 6: sin(v) y cos(v)
-    if (clean.toLowerCase() == 'sin($v)') {
-      return '-\\cos($v)';
-    }
-    if (clean.toLowerCase() == 'cos($v)') {
-      return '\\sin($v)';
-    }
-
-    // Caso general
-    final disp = IntegralExpressionTransformer.toDisplayLatex(clean);
-    return '\\int ($disp) \\, d$v';
+    return _integrateSingleTerm(clean, v);
   }
 
   static IntegralSolution _solve1D(MultivariableIntegral integral, DateTime startTime) {
@@ -741,6 +871,10 @@ class LocalMathEngine {
     final approxStr = outerIdentical ? '0.0000' : approx.toStringAsFixed(4);
     final antiderivInner = _findAntiderivative(integral.integrand, innerBound.variable);
 
+    final inEvalLatex = innerInverted
+        ? '-\\int_{$inUpp}^{$inLow} ($cleanIntegrand) \\, d${innerBound.variable} = -\\left[ $antiderivInner \\right]_{$inUpp}^{$inLow}'
+        : '\\left[ $antiderivInner \\right]_{$inLow}^{$inUpp}';
+
     final steps = <SolverStep>[
       SolverStep(
         stepNumber: 1,
@@ -754,12 +888,8 @@ class LocalMathEngine {
         antiderivativeWorkLatex: '\\int $cleanIntegrand \\, d${innerBound.variable} = $antiderivInner',
         limitsEvaluationText: 'Ahora evaluamos en los límites ${innerBound.variable} = $inLow y ${innerBound.variable} = $inUpp:',
         antiderivativeLatex: antiderivInner,
-        evaluatedLatex: innerInverted
-            ? '-\\int_{$inUpp}^{$inLow} ($cleanIntegrand) \\, d${innerBound.variable} = -G(${outerBound.variable})'
-            : '\\left[ F(${innerBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp} = G(${outerBound.variable})',
-        simplifiedResultLatex: innerInverted
-            ? '-G(${outerBound.variable})'
-            : 'G(${outerBound.variable})',
+        evaluatedLatex: inEvalLatex,
+        simplifiedResultLatex: '\\left[ $antiderivInner \\right]_{$inLow}^{$inUpp}',
         explanation: innerInverted
             ? 'Propiedad de Inversión de Límites: como el límite inferior interior ($inLow) es numéricamente mayor que el superior ($inUpp), se invierten las cotas al intervalo canónico [$inUpp, $inLow] y se aplica el factor multiplicativo (-1) a la antiderivada parcial.'
             : 'Se realiza la primera integración parcial respecto a la variable interior d${innerBound.variable}, tratando a ${outerBound.variable} como parámetro constante según el Teorema de Fubini.',
@@ -773,24 +903,24 @@ class LocalMathEngine {
         variable: outerBound.variable,
         lowerBoundLatex: outLow,
         upperBoundLatex: outUpp,
-        currentIntegrandLatex: innerInverted ? '-G(${outerBound.variable})' : 'G(${outerBound.variable})',
+        currentIntegrandLatex: '\\left[ $antiderivInner \\right]_{$inLow}^{$inUpp}',
         stepTitle: 'Paso 2: Resolver la integral externa (con respecto a ${outerBound.variable})',
-        stepIntegralLatex: '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable}',
-        constantTreatmentText: 'Integramos respecto a ${outerBound.variable}:',
-        antiderivativeWorkLatex: '\\int G(${outerBound.variable}) \\, d${outerBound.variable}',
+        stepIntegralLatex: '\\int_{$outLow}^{$outUpp} \\left( \\int_{$inLow}^{$inUpp} $cleanIntegrand \\, d${innerBound.variable} \\right) d${outerBound.variable}',
+        constantTreatmentText: 'Integramos la función resultante respecto a ${outerBound.variable}:',
+        antiderivativeWorkLatex: '\\int \\left( \\left[ $antiderivInner \\right]_{$inLow}^{$inUpp} \\right) d${outerBound.variable}',
         limitsEvaluationText: 'Ahora evaluamos en los límites ${outerBound.variable} = $outLow y ${outerBound.variable} = $outUpp:',
-        antiderivativeLatex: '\\int G(${outerBound.variable}) \\, d${outerBound.variable}',
+        antiderivativeLatex: '\\int_{$outLow}^{$outUpp} ($cleanIntegrand) \\, d${outerBound.variable}',
         evaluatedLatex: outerIdentical
-            ? '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable} = 0'
+            ? '\\int_{$outLow}^{$outUpp} ($cleanIntegrand) \\, d${outerBound.variable} = 0'
             : (outerInverted
-                ? '-\\int_{$outUpp}^{$outLow} G(${outerBound.variable}) \\, d${outerBound.variable} = -[H($outLow) - H($outUpp)] \\approx $approxStr'
-                : '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr'),
+                ? '-\\int_{$outUpp}^{$outLow} \\dots = -(F($outLow) - F($outUpp)) \\approx $approxStr'
+                : '\\int_{$outLow}^{$outUpp} \\left[ $antiderivInner \\right]_{$inLow}^{$inUpp} \\, d${outerBound.variable} \\approx $approxStr'),
         simplifiedResultLatex: approxStr,
         explanation: outerIdentical
             ? 'Límites exteriores idénticos: el intervalo de la cota exterior [$outLow, $outUpp] tiene longitud cero, anulando la integral.'
             : (outerInverted
                 ? 'Propiedad de Inversión de Límites en la cota exterior: como el límite inferior ($outLow) es mayor que el superior ($outUpp), se invierte el intervalo a [$outUpp, $outLow] multiplicando por (-1) y acumulando el volumen con el signo correcto.'
-                : 'Se integra la función resultante de área G(${outerBound.variable}) sobre el intervalo exterior [$outLow, $outUpp], acumulando el volumen total.'),
+                : 'Se integra la función resultante de área sobre el intervalo exterior [$outLow, $outUpp], acumulando el volumen total.'),
         appliedMethod: outerIdentical
             ? 'Propiedad de Límites Idénticos: ∫_a^a = 0'
             : (outerInverted
