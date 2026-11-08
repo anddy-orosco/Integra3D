@@ -428,12 +428,40 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
       );
     }
 
+    final bool hasInversion = solution.steps.any((s) => s.isLimitInverted);
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       physics: const BouncingScrollPhysics(),
-      itemCount: solution.steps.length,
+      itemCount: solution.steps.length + (hasInversion ? 1 : 0),
       itemBuilder: (context, index) {
-        final step = solution.steps[index];
+        // Banner introductorio para propiedades de orientación si aplica
+        if (hasInversion && index == 0) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.amberGlow.withAlpha(20),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.amberGlow.withAlpha(100)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.swap_vert_circle_rounded, color: AppColors.amberGlow, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Propiedad de orientación activa: se detectaron límites invertidos (inferior > superior). Se aplica la identidad fundamental ∫_a^b f = -∫_b^a f con factor (-1) para garantizar rigor y conservar el signo.',
+                    style: TextStyle(fontSize: 11, color: mathColors.formulaText, height: 1.35),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final stepIndex = hasInversion ? index - 1 : index;
+        final step = solution.steps[stepIndex];
         final isZ = step.variable == 'z';
         final isY = step.variable == 'y';
         final axisColor = isZ
@@ -446,7 +474,12 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           decoration: BoxDecoration(
             color: AppColors.slateDark,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.borderSubtle),
+            border: Border.all(
+              color: step.isLimitInverted
+                  ? AppColors.amberGlow.withAlpha(90)
+                  : AppColors.borderSubtle,
+              width: step.isLimitInverted ? 1.5 : 1.0,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,7 +493,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                         width: 22,
                         height: 22,
                         decoration: BoxDecoration(
-                          color: mathColors.primaryAction,
+                          color: step.isLimitInverted ? AppColors.amberGlow : mathColors.primaryAction,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         alignment: Alignment.center,
@@ -476,27 +509,87 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                       ),
                     ],
                   ),
-                  // Axis canonical tag
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: axisColor.withAlpha(25),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: axisColor.withAlpha(120)),
-                    ),
-                    child: Text(
-                      'Eje ${step.variable.toUpperCase()}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: axisColor,
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      // Badge de Método / Propiedad aplicada
+                      if (step.appliedMethod != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(22),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(120)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                step.isLimitInverted ? Icons.swap_vert_rounded : Icons.functions_rounded,
+                                size: 11,
+                                color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                step.appliedMethod!,
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Axis canonical tag
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: axisColor.withAlpha(25),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: axisColor.withAlpha(120)),
+                        ),
+                        child: Text(
+                          'Eje ${step.variable.toUpperCase()}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: axisColor,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(step.explanation, style: TextStyle(fontSize: 11, color: mathColors.metadataText)),
+
+              // Didactic card específica si este paso tuvo inversión
+              if (step.isLimitInverted)
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.amberGlow.withAlpha(15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.amberGlow.withAlpha(80)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.amberGlow),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Cotas invertidas: ${step.lowerBoundLatex} > ${step.upperBoundLatex}. Se aplicó la inversión canónica con factor (-1) preservando signos en F(b) - F(a).',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.amberGlow),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              Text(step.explanation, style: TextStyle(fontSize: 11, color: mathColors.metadataText, height: 1.4)),
               const Divider(color: AppColors.borderSubtle, height: 20),
 
               Text('1. Antiderivada parcial:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.secondaryAccent)),
@@ -509,7 +602,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               LatexCard(latex: step.evaluatedLatex),
 
               const SizedBox(height: 8),
-              Text('3. Resultado simplificado:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.mathWarning)),
+              Text('3. Resultado simplificado del paso:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.mathWarning)),
               const SizedBox(height: 4),
               LatexCard(latex: step.simplifiedResultLatex, isHighlight: true),
             ],

@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'integral_expression_transformer.dart';
 
 /// Evaluador de expresiones matemáticas autónomo mediante Descenso Recursivo.
 /// Permite evaluar funciones algebraicas f(x, y, z) de cálculo multivariable
@@ -9,7 +10,7 @@ class MathExpressionEvaluator {
   int _ch = -1;
 
   MathExpressionEvaluator(String expression)
-      : _input = expression
+      : _input = IntegralExpressionTransformer.normalizeExpression(expression)
             .replaceAll(' ', '')
             .replaceAll('**', '^')
             .replaceAll('×', '*')
@@ -21,7 +22,9 @@ class MathExpressionEvaluator {
     if (expression.trim().isEmpty) return 0.0;
     try {
       final evaluator = MathExpressionEvaluator(expression);
-      return evaluator._parse(x: x, y: y, z: z);
+      final result = evaluator._parse(x: x, y: y, z: z);
+      if (result.isNaN || result.isInfinite) return result;
+      return result.abs() < 1e-12 ? 0.0 : result;
     } catch (_) {
       return double.nan;
     }

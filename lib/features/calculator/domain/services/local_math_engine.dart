@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import '../entities/integration_bound.dart';
 import '../entities/multivariable_integral.dart';
 import 'integral_expression_transformer.dart';
 import 'math_expression_evaluator.dart';
@@ -308,11 +309,13 @@ class LocalMathEngine {
   static IntegralSolution solveLocal(MultivariableIntegral integral) {
     final startTime = DateTime.now();
 
-    // 1. Verificar si coincide con un preset conocido
+    // 1. Verificar si coincide con un preset conocido (debe coincidir integrando Y límites)
     final normalizedIntegrand = _cleanExpr(integral.integrand);
     for (final preset in builtInPresets) {
+      final presetBounds = (preset['bounds'] as List<dynamic>?) ?? [];
       if (_cleanExpr(preset['integrand'] as String) == normalizedIntegrand &&
-          preset['dimension'] == integral.dimension) {
+          preset['dimension'] == integral.dimension &&
+          _boundsMatch(presetBounds, integral.bounds)) {
         final stepsRaw = (preset['steps'] as List<dynamic>?) ?? [];
         final steps = stepsRaw
             .map((s) => SolverStep.fromJson(s as Map<String, dynamic>))
@@ -374,6 +377,63 @@ class LocalMathEngine {
   // SOLUCIONADORES DIDÁCTICOS POR DIMENSIÓN (1D, 2D, 3D)
   // =========================================================================
 
+  static String _findAntiderivative(String integrand, String variable) {
+    final clean = integrand.trim();
+    final v = variable.toLowerCase();
+
+    // Caso 1: Integrando no depende de la variable (es constante respecto a v)
+    if (!clean.toLowerCase().contains(v)) {
+      final disp = IntegralExpressionTransformer.toDisplayLatex(clean);
+      if (disp == '1' || disp.isEmpty) return v;
+      return '$v \\cdot ($disp)';
+    }
+
+    // Caso 2: Integrando es solo la variable 'x', 'y', 'z'
+    if (clean.toLowerCase() == v) {
+      return '\\frac{$v^2}{2}';
+    }
+
+    // Caso 3: Potencia v^n (ej: x^2, x^3)
+    final powRegex = RegExp('^$v\\^(\\d+)\$', caseSensitive: false);
+    final powMatch = powRegex.firstMatch(clean);
+    if (powMatch != null) {
+      final n = int.tryParse(powMatch.group(1)!) ?? 1;
+      final nPlus1 = n + 1;
+      return '\\frac{$v^{$nPlus1}}{$nPlus1}';
+    }
+
+    // Caso 4: Coeficiente por potencia (ej: 4*x^2, 3x, 6x^3)
+    final coeffPowRegex = RegExp('^(\\d+)\\s*\\*?\\s*$v(?:\\^(\\d+))?\$', caseSensitive: false);
+    final coeffMatch = coeffPowRegex.firstMatch(clean);
+    if (coeffMatch != null) {
+      final c = int.tryParse(coeffMatch.group(1)!) ?? 1;
+      final n = coeffMatch.group(2) != null ? (int.tryParse(coeffMatch.group(2)!) ?? 1) : 1;
+      final nPlus1 = n + 1;
+      if (c % nPlus1 == 0) {
+        final div = c ~/ nPlus1;
+        return div == 1 ? '$v^{$nPlus1}' : '$div $v^{$nPlus1}';
+      }
+      return '\\frac{$c $v^{$nPlus1}}{$nPlus1}';
+    }
+
+    // Caso 5: Exponencial e^v o exp(v)
+    if (clean.toLowerCase() == 'exp($v)' || clean.toLowerCase() == 'e^$v') {
+      return 'e^{$v}';
+    }
+
+    // Caso 6: sin(v) y cos(v)
+    if (clean.toLowerCase() == 'sin($v)') {
+      return '-\\cos($v)';
+    }
+    if (clean.toLowerCase() == 'cos($v)') {
+      return '\\sin($v)';
+    }
+
+    // Caso general
+    final disp = IntegralExpressionTransformer.toDisplayLatex(clean);
+    return '\\int ($disp) \\, d$v';
+  }
+
   static IntegralSolution _solve1D(MultivariableIntegral integral, DateTime startTime) {
     final bound = integral.bounds[0];
     final approx = _simpson1DGeneral(
@@ -393,10 +453,55 @@ class LocalMathEngine {
       );
     }
 
+    final rawA = MathExpressionEvaluator.evaluate(bound.lower);
+    final rawB = MathExpressionEvaluator.evaluate(bound.upper);
+    final bool isInverted = !rawA.isNaN && !rawB.isNaN && rawA > rawB;
+    final bool isIdentical = !rawA.isNaN && !rawB.isNaN && rawA == rawB;
+
     final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
     final cleanLower = IntegralExpressionTransformer.toDisplayLatex(bound.lower);
     final cleanUpper = IntegralExpressionTransformer.toDisplayLatex(bound.upper);
-    final approxStr = approx.toStringAsFixed(4);
+    final approxStr = isIdentical ? '0.0000' : approx.toStringAsFixed(4);
+    final antideriv = _findAntiderivative(integral.integrand, bound.variable);
+
+    String appliedMethod = 'Teorema Fundamental del Cálculo';
+    String evaluatedLatex;
+    String explanation;
+
+    if (isIdentical) {
+      appliedMethod = 'Propiedad de Límites Idénticos: ∫_a^a = 0';
+      evaluatedLatex = '\\int_{$cleanLower}^{$cleanUpper} ($cleanIntegrand) \\, d${bound.variable} = 0';
+      explanation = 'Límites idénticos: el intervalo de integración tiene amplitud nula [$cleanLower, $cleanUpper]. La integral definida de cualquier función acotada en un punto degenerado es exactamente cero.';
+    } else if (isInverted) {
+      appliedMethod = 'Propiedad de Inversión de Límites: ∫_a^b = -∫_b^a';
+      evaluatedLatex = '-\\int_{$cleanUpper}^{$cleanLower} ($cleanIntegrand) \\, d${bound.variable} = -\\left[ F(${bound.variable}) \\right]_{$cleanUpper}^{$cleanLower} = -(F($cleanLower) - F($cleanUpper)) \\approx $approxStr';
+      explanation = 'Propiedad de Inversión de Límites: dado que el límite inferior ($cleanLower) es estrictamente mayor que el límite superior ($cleanUpper), se invierte el sentido de integración al intervalo canónico [$cleanUpper, $cleanLower] y se multiplica por el factor (-1). Esto preserva el signo negativo sin alterar el valor numérico.';
+    } else {
+      appliedMethod = 'Teorema Fundamental del Cálculo';
+      evaluatedLatex = '\\left[ F(${bound.variable}) \\right]_{$cleanLower}^{$cleanUpper} = F($cleanUpper) - F($cleanLower) \\approx $approxStr';
+      explanation = 'Se aplica el Teorema Fundamental del Cálculo integrando la función respecto a d${bound.variable} y evaluando la diferencia entre el límite superior e inferior F(b) - F(a).';
+    }
+
+    final sections = <PedagogicalSection>[
+      const PedagogicalSection(
+        title: '1. Teorema Fundamental del Cálculo',
+        content: 'Si f es continua en [a, b] y F es una antiderivada de f, entonces ∫_a^b f(x) dx = F(b) - F(a).',
+      ),
+      if (isInverted)
+        const PedagogicalSection(
+          title: '2. Propiedad de Inversión de Sentido de Integración (∫_a^b = -∫_b^a)',
+          content: 'Por definición de la suma de Riemann, el incremento dx = (b - a)/n se vuelve negativo cuando el límite inferior es mayor que el superior (a > b). Esto invierte el signo del resultado: ∫_a^b f(x) dx = -∫_b^a f(x) dx.',
+        ),
+      if (isIdentical)
+        const PedagogicalSection(
+          title: '2. Propiedad de Límites Idénticos (Intervalo Degenerado)',
+          content: 'Si los extremos superior e inferior coinciden (a = b), la amplitud del intervalo es cero y la integral definida es exactamente 0.',
+        ),
+      PedagogicalSection(
+        title: isInverted || isIdentical ? '3. Interpretación Geométrica y Signo' : '2. Interpretación Geométrica',
+        content: 'El valor $approxStr representa el área neta signada bajo la curva f(${bound.variable}) en el intervalo [$cleanLower, $cleanUpper].',
+      ),
+    ];
 
     return IntegralSolution(
       isSuccess: true,
@@ -411,22 +516,15 @@ class LocalMathEngine {
           lowerBoundLatex: cleanLower,
           upperBoundLatex: cleanUpper,
           currentIntegrandLatex: cleanIntegrand,
-          antiderivativeLatex: '\\int ($cleanIntegrand) \\, d${bound.variable}',
-          evaluatedLatex: '\\left[ F(${bound.variable}) \\right]_{$cleanLower}^{$cleanUpper} = F($cleanUpper) - F($cleanLower) \\approx $approxStr',
+          antiderivativeLatex: antideriv,
+          evaluatedLatex: evaluatedLatex,
           simplifiedResultLatex: approxStr,
-          explanation: 'Se aplica el Teorema Fundamental del Cálculo integrando la función respecto a d${bound.variable} y evaluando la diferencia entre el límite superior e inferior.',
+          explanation: explanation,
+          appliedMethod: appliedMethod,
+          isLimitInverted: isInverted,
         ),
       ],
-      didacticSections: [
-        const PedagogicalSection(
-          title: '1. Teorema Fundamental del Cálculo',
-          content: 'Si f es continua en [a, b] y F es una antiderivada de f, entonces ∫_a^b f(x) dx = F(b) - F(a).',
-        ),
-        PedagogicalSection(
-          title: '2. Interpretación Geométrica',
-          content: 'El valor $approxStr representa el área neta signada bajo la curva f(${bound.variable}) en el intervalo [$cleanLower, $cleanUpper].',
-        ),
-      ],
+      didacticSections: sections,
     );
   }
 
@@ -455,12 +553,87 @@ class LocalMathEngine {
       );
     }
 
+    final rawInLow = MathExpressionEvaluator.evaluate(innerBound.lower);
+    final rawInUpp = MathExpressionEvaluator.evaluate(innerBound.upper);
+    final rawOutLow = MathExpressionEvaluator.evaluate(outerBound.lower);
+    final rawOutUpp = MathExpressionEvaluator.evaluate(outerBound.upper);
+
+    final bool innerInverted = !rawInLow.isNaN && !rawInUpp.isNaN && rawInLow > rawInUpp;
+    final bool outerInverted = !rawOutLow.isNaN && !rawOutUpp.isNaN && rawOutLow > rawOutUpp;
+    final bool outerIdentical = !rawOutLow.isNaN && !rawOutUpp.isNaN && rawOutLow == rawOutUpp;
+
     final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
     final inLow = IntegralExpressionTransformer.toDisplayLatex(innerBound.lower);
     final inUpp = IntegralExpressionTransformer.toDisplayLatex(innerBound.upper);
     final outLow = IntegralExpressionTransformer.toDisplayLatex(outerBound.lower);
     final outUpp = IntegralExpressionTransformer.toDisplayLatex(outerBound.upper);
-    final approxStr = approx.toStringAsFixed(4);
+    final approxStr = outerIdentical ? '0.0000' : approx.toStringAsFixed(4);
+    final antiderivInner = _findAntiderivative(integral.integrand, innerBound.variable);
+
+    final steps = <SolverStep>[
+      SolverStep(
+        stepNumber: 1,
+        variable: innerBound.variable,
+        lowerBoundLatex: inLow,
+        upperBoundLatex: inUpp,
+        currentIntegrandLatex: cleanIntegrand,
+        antiderivativeLatex: antiderivInner,
+        evaluatedLatex: innerInverted
+            ? '-\\int_{$inUpp}^{$inLow} ($cleanIntegrand) \\, d${innerBound.variable} = -G(${outerBound.variable})'
+            : '\\left[ F(${innerBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp} = G(${outerBound.variable})',
+        simplifiedResultLatex: innerInverted
+            ? '-G(${outerBound.variable})'
+            : 'G(${outerBound.variable}) = \\int_{$inLow}^{$inUpp} ($cleanIntegrand) \\, d${innerBound.variable}',
+        explanation: innerInverted
+            ? 'Propiedad de Inversión de Límites: como el límite inferior interior ($inLow) es numéricamente mayor que el superior ($inUpp), se invierten las cotas al intervalo canónico [$inUpp, $inLow] y se aplica el factor multiplicativo (-1) a la antiderivada parcial.'
+            : 'Se realiza la primera integración parcial respecto a la variable interior d${innerBound.variable}, tratando a ${outerBound.variable} como parámetro constante según el Teorema de Fubini.',
+        appliedMethod: innerInverted
+            ? 'Propiedad de Inversión de Límites: ∫_a^b = -∫_b^a'
+            : 'Teorema de Fubini (Integración Parcial)',
+        isLimitInverted: innerInverted,
+      ),
+      SolverStep(
+        stepNumber: 2,
+        variable: outerBound.variable,
+        lowerBoundLatex: outLow,
+        upperBoundLatex: outUpp,
+        currentIntegrandLatex: innerInverted ? '-G(${outerBound.variable})' : 'G(${outerBound.variable})',
+        antiderivativeLatex: '\\int G(${outerBound.variable}) \\, d${outerBound.variable}',
+        evaluatedLatex: outerIdentical
+            ? '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable} = 0'
+            : (outerInverted
+                ? '-\\int_{$outUpp}^{$outLow} G(${outerBound.variable}) \\, d${outerBound.variable} = -[H($outLow) - H($outUpp)] \\approx $approxStr'
+                : '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr'),
+        simplifiedResultLatex: approxStr,
+        explanation: outerIdentical
+            ? 'Límites exteriores idénticos: el intervalo de la cota exterior [$outLow, $outUpp] tiene longitud cero, anulando la integral.'
+            : (outerInverted
+                ? 'Propiedad de Inversión de Límites en la cota exterior: como el límite inferior ($outLow) es mayor que el superior ($outUpp), se invierte el intervalo a [$outUpp, $outLow] multiplicando por (-1) y acumulando el volumen con el signo correcto.'
+                : 'Se integra la función resultante de área G(${outerBound.variable}) sobre el intervalo exterior [$outLow, $outUpp], acumulando el volumen total.'),
+        appliedMethod: outerIdentical
+            ? 'Propiedad de Límites Idénticos: ∫_a^a = 0'
+            : (outerInverted
+                ? 'Propiedad de Inversión de Límites: ∫_a^b = -∫_b^a'
+                : 'Teorema Fundamental del Cálculo (Acumulación Exterior)'),
+        isLimitInverted: outerInverted,
+      ),
+    ];
+
+    final sections = <PedagogicalSection>[
+      const PedagogicalSection(
+        title: '1. Teorema de Fubini en el Plano (2D)',
+        content: 'Permite descomponer la integral doble sobre una región tipo I o tipo II en dos integrales iteradas simples unidimensionales.',
+      ),
+      if (innerInverted || outerInverted)
+        const PedagogicalSection(
+          title: '2. Propiedad de Inversión de Sentido de Integración (∫_a^b = -∫_b^a)',
+          content: 'Cuando una cota inferior supera a la superior en cualquiera de las variables de integración, el orden se normaliza canónicamente y se aplica un factor de (-1) por cada capa invertida, preservando rigurosamente el signo del resultado analítico.',
+        ),
+      PedagogicalSection(
+        title: innerInverted || outerInverted ? '3. Interpretación del Volumen Neto' : '2. Interpretación del Volumen Neto',
+        content: 'El valor obtenido (≈ $approxStr u³) corresponde al volumen acotado entre la superficie z = f(x, y) y el plano coordenado.',
+      ),
+    ];
 
     return IntegralSolution(
       isSuccess: true,
@@ -468,40 +641,8 @@ class LocalMathEngine {
       approxNumeric: double.parse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
       executionTimeMs: math.max(ms, 18.0),
-      steps: [
-        SolverStep(
-          stepNumber: 1,
-          variable: innerBound.variable,
-          lowerBoundLatex: inLow,
-          upperBoundLatex: inUpp,
-          currentIntegrandLatex: cleanIntegrand,
-          antiderivativeLatex: '\\int ($cleanIntegrand) \\, d${innerBound.variable}',
-          evaluatedLatex: '\\left[ F(${innerBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp} = G(${outerBound.variable})',
-          simplifiedResultLatex: 'G(${outerBound.variable}) = \\int_{$inLow}^{$inUpp} ($cleanIntegrand) \\, d${innerBound.variable}',
-          explanation: 'Se realiza la primera integración parcial respecto a la variable interior d${innerBound.variable}, tratando a ${outerBound.variable} como parámetro constante.',
-        ),
-        SolverStep(
-          stepNumber: 2,
-          variable: outerBound.variable,
-          lowerBoundLatex: outLow,
-          upperBoundLatex: outUpp,
-          currentIntegrandLatex: 'G(${outerBound.variable})',
-          antiderivativeLatex: '\\int G(${outerBound.variable}) \\, d${outerBound.variable}',
-          evaluatedLatex: '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr',
-          simplifiedResultLatex: approxStr,
-          explanation: 'Se integra la función resultante de área G(${outerBound.variable}) sobre el intervalo exterior [$outLow, $outUpp], acumulando el volumen total.',
-        ),
-      ],
-      didacticSections: [
-        const PedagogicalSection(
-          title: '1. Teorema de Fubini en el Plano (2D)',
-          content: 'Permite descomponer la integral doble sobre una región tipo I o tipo II en dos integrales iteradas simples unidimensionales.',
-        ),
-        PedagogicalSection(
-          title: '2. Interpretación del Volumen Neto',
-          content: 'El valor obtenido (≈ $approxStr u³) corresponde al volumen acotado entre la superficie z = f(x, y) y el plano coordenado.',
-        ),
-      ],
+      steps: steps,
+      didacticSections: sections,
     );
   }
 
@@ -534,6 +675,17 @@ class LocalMathEngine {
       );
     }
 
+    final rawInLow = MathExpressionEvaluator.evaluate(innerBound.lower);
+    final rawInUpp = MathExpressionEvaluator.evaluate(innerBound.upper);
+    final rawMidLow = MathExpressionEvaluator.evaluate(midBound.lower);
+    final rawMidUpp = MathExpressionEvaluator.evaluate(midBound.upper);
+    final rawOutLow = MathExpressionEvaluator.evaluate(outerBound.lower);
+    final rawOutUpp = MathExpressionEvaluator.evaluate(outerBound.upper);
+
+    final bool innerInverted = !rawInLow.isNaN && !rawInUpp.isNaN && rawInLow > rawInUpp;
+    final bool midInverted = !rawMidLow.isNaN && !rawMidUpp.isNaN && rawMidLow > rawMidUpp;
+    final bool outerInverted = !rawOutLow.isNaN && !rawOutUpp.isNaN && rawOutLow > rawOutUpp;
+
     final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
     final inLow = IntegralExpressionTransformer.toDisplayLatex(innerBound.lower);
     final inUpp = IntegralExpressionTransformer.toDisplayLatex(innerBound.upper);
@@ -544,6 +696,91 @@ class LocalMathEngine {
     final approxStr = approx.toStringAsFixed(4);
 
     final bool isInnerIndependent = !integral.integrand.contains(innerBound.variable);
+    final antiderivInner = _findAntiderivative(integral.integrand, innerBound.variable);
+
+    final steps = <SolverStep>[
+      SolverStep(
+        stepNumber: 1,
+        variable: innerBound.variable,
+        lowerBoundLatex: inLow,
+        upperBoundLatex: inUpp,
+        currentIntegrandLatex: cleanIntegrand,
+        antiderivativeLatex: isInnerIndependent
+            ? '${innerBound.variable} \\cdot ($cleanIntegrand)'
+            : antiderivInner,
+        evaluatedLatex: innerInverted
+            ? '-\\int_{$inUpp}^{$inLow} ($cleanIntegrand) \\, d${innerBound.variable} = -A(${midBound.variable}, ${outerBound.variable})'
+            : (isInnerIndependent
+                ? '\\left[ ${innerBound.variable} \\right]_{$inLow}^{$inUpp} \\cdot ($cleanIntegrand) = ($inUpp - $inLow)($cleanIntegrand)'
+                : '\\left[ F(${innerBound.variable}, ${midBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp}'),
+        simplifiedResultLatex: innerInverted
+            ? '-A(${midBound.variable}, ${outerBound.variable})'
+            : (isInnerIndependent ? '($inUpp - $inLow)($cleanIntegrand)' : 'A(${midBound.variable}, ${outerBound.variable})'),
+        explanation: innerInverted
+            ? 'Propiedad de Inversión de Límites: dado que la cota inferior ($inLow) supera a la superior ($inUpp), se invierte el intervalo a [$inUpp, $inLow] y se aplica un factor de (-1).'
+            : (isInnerIndependent
+                ? 'Dado que el integrando no contiene la variable interior ${innerBound.variable}, se factoriza como constante respecto a d${innerBound.variable}. La antiderivada directa es ${innerBound.variable}.'
+                : 'Se integra la primera capa interior con respecto a d${innerBound.variable} evaluando en los límites de superficie [$inLow, $inUpp].'),
+        appliedMethod: innerInverted
+            ? 'Propiedad de Inversión de Límites (Capa Interior)'
+            : (isInnerIndependent ? 'Linealidad / Factorización de Constantes' : 'Teorema de Fubini en ℝ³'),
+        isLimitInverted: innerInverted,
+      ),
+      SolverStep(
+        stepNumber: 2,
+        variable: midBound.variable,
+        lowerBoundLatex: midLow,
+        upperBoundLatex: midUpp,
+        currentIntegrandLatex: 'A(${midBound.variable}, ${outerBound.variable})',
+        antiderivativeLatex: '\\int A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable}',
+        evaluatedLatex: midInverted
+            ? '-\\int_{$midUpp}^{$midLow} A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable} = -B(${outerBound.variable})'
+            : '\\int_{$midLow}^{$midUpp} A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable} = B(${outerBound.variable})',
+        simplifiedResultLatex: midInverted ? '-B(${outerBound.variable})' : 'B(${outerBound.variable})',
+        explanation: midInverted
+            ? 'Propiedad de Inversión de Límites: dado que el límite inferior intermedio ($midLow) es numéricamente mayor que el superior ($midUpp) [de $midLow a $midUpp], se invierte el orden del intervalo a [$midUpp, $midLow] y se aplica un factor multiplicativo de (-1). Esto preserva el signo negativo exacto y evita anulaciones a 0.0000.'
+            : 'Se integra la capa intermedia respecto a d${midBound.variable}, acumulando las secciones transversales proyectadas sobre el plano de las variables exteriores.',
+        appliedMethod: midInverted
+            ? 'Propiedad de Inversión de Límites: ∫_a^b = -∫_b^a'
+            : 'Teorema de Fubini (Capa Intermedia)',
+        isLimitInverted: midInverted,
+      ),
+      SolverStep(
+        stepNumber: 3,
+        variable: outerBound.variable,
+        lowerBoundLatex: outLow,
+        upperBoundLatex: outUpp,
+        currentIntegrandLatex: 'B(${outerBound.variable})',
+        antiderivativeLatex: '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable}',
+        evaluatedLatex: outerInverted
+            ? '-\\int_{$outUpp}^{$outLow} B(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr'
+            : '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr',
+        simplifiedResultLatex: approxStr,
+        explanation: outerInverted
+            ? 'Propiedad de Inversión de Límites en la cota exterior: se invierten los extremos [$outUpp, $outLow] con factor (-1), preservando el signo del volumen.'
+            : 'Se concluye la evaluación exterior unidimensional sobre el intervalo acotado [$outLow, $outUpp], obteniendo el volumen ponderado total.',
+        appliedMethod: outerInverted
+            ? 'Propiedad de Inversión de Límites (Cota Exterior)'
+            : 'Teorema Fundamental del Cálculo (Volumen Total)',
+        isLimitInverted: outerInverted,
+      ),
+    ];
+
+    final sections = <PedagogicalSection>[
+      const PedagogicalSection(
+        title: '1. Teorema de Fubini en ℝ³ (Integrales Triples)',
+        content: 'Establece que bajo condiciones de continuidad, la integral triple de volumen dV = dz dy dx se puede calcular mediante tres integrales simples iteradas secuenciales.',
+      ),
+      if (innerInverted || midInverted || outerInverted)
+        const PedagogicalSection(
+          title: '2. Propiedad de Inversión de Sentido de Integración (∫_a^b = -∫_b^a)',
+          content: 'Cuando una cota de integración intermedia o exterior está invertida (límite inferior mayor que el superior, ej. ∫_9^4), la orientación del diferencial introduce un factor de (-1). El motor matemático de Integra3D detecta y normaliza estos intervalos para asegurar la conservación de signos y evitar errores de anulación a cero.',
+        ),
+      PedagogicalSection(
+        title: innerInverted || midInverted || outerInverted ? '3. Interpretación Geométrica y Masa/Volumen Ponderado' : '2. Interpretación Geométrica y Masa/Volumen Ponderado',
+        content: 'El resultado analítico ≈ $approxStr u³ representa el volumen total del sólido acotado entre las superficies límites, ponderado por la función de densidad f(x, y, z).',
+      ),
+    ];
 
     return IntegralSolution(
       isSuccess: true,
@@ -551,59 +788,8 @@ class LocalMathEngine {
       approxNumeric: double.parse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
       executionTimeMs: math.max(ms, 22.0),
-      steps: [
-        SolverStep(
-          stepNumber: 1,
-          variable: innerBound.variable,
-          lowerBoundLatex: inLow,
-          upperBoundLatex: inUpp,
-          currentIntegrandLatex: cleanIntegrand,
-          antiderivativeLatex: isInnerIndependent
-              ? '${innerBound.variable} \\cdot ($cleanIntegrand)'
-              : '\\int ($cleanIntegrand) \\, d${innerBound.variable}',
-          evaluatedLatex: isInnerIndependent
-              ? '\\left[ ${innerBound.variable} \\right]_{$inLow}^{$inUpp} \\cdot ($cleanIntegrand) = ($inUpp - $inLow)($cleanIntegrand)'
-              : '\\left[ F(${innerBound.variable}, ${midBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp}',
-          simplifiedResultLatex: isInnerIndependent
-              ? '($inUpp - $inLow)($cleanIntegrand)'
-              : 'A(${midBound.variable}, ${outerBound.variable})',
-          explanation: isInnerIndependent
-              ? 'Dado que el integrando no contiene la variable interior ${innerBound.variable}, se factoriza como constante respecto a d${innerBound.variable}. La antiderivada directa es ${innerBound.variable}.'
-              : 'Se integra la primera capa interior con respecto a d${innerBound.variable} evaluando en los límites de superficie [$inLow, $inUpp].',
-        ),
-        SolverStep(
-          stepNumber: 2,
-          variable: midBound.variable,
-          lowerBoundLatex: midLow,
-          upperBoundLatex: midUpp,
-          currentIntegrandLatex: 'A(${midBound.variable}, ${outerBound.variable})',
-          antiderivativeLatex: '\\int A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable}',
-          evaluatedLatex: '\\int_{$midLow}^{$midUpp} A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable} = B(${outerBound.variable})',
-          simplifiedResultLatex: 'B(${outerBound.variable})',
-          explanation: 'Se integra la capa intermedia respecto a d${midBound.variable}, acumulando las secciones transversales proyectadas sobre el plano de las variables exteriores.',
-        ),
-        SolverStep(
-          stepNumber: 3,
-          variable: outerBound.variable,
-          lowerBoundLatex: outLow,
-          upperBoundLatex: outUpp,
-          currentIntegrandLatex: 'B(${outerBound.variable})',
-          antiderivativeLatex: '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable}',
-          evaluatedLatex: '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr',
-          simplifiedResultLatex: approxStr,
-          explanation: 'Se concluye la evaluación exterior unidimensional sobre el intervalo acotado [$outLow, $outUpp], obteniendo el volumen ponderado total.',
-        ),
-      ],
-      didacticSections: [
-        const PedagogicalSection(
-          title: '1. Teorema de Fubini en ℝ³ (Integrales Triples)',
-          content: 'Establece que bajo condiciones de continuidad, la integral triple de volumen dV = dz dy dx se puede calcular mediante tres integrales simples iteradas secuenciales.',
-        ),
-        PedagogicalSection(
-          title: '2. Interpretación Geométrica y Masa/Volumen Ponderado',
-          content: 'El resultado analítico ≈ $approxStr u³ representa el volumen total del sólido acotado entre las superficies límites, ponderado por la función de densidad f(x, y, z).',
-        ),
-      ],
+      steps: steps,
+      didacticSections: sections,
     );
   }
 
@@ -629,7 +815,7 @@ class LocalMathEngine {
     );
   }
 
-  /// Cuadratura 1D compuesta de Simpson
+  /// Cuadratura 1D compuesta de Simpson con soporte riguroso de límites invertidos
   static double _simpson1DGeneral({
     required String integrand,
     required String variable,
@@ -639,10 +825,16 @@ class LocalMathEngine {
   }) {
     if (n % 2 != 0) n++;
     final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
-    final a = MathExpressionEvaluator.evaluate(lower);
-    final b = MathExpressionEvaluator.evaluate(upper);
+    final rawA = MathExpressionEvaluator.evaluate(lower);
+    final rawB = MathExpressionEvaluator.evaluate(upper);
 
-    if (a.isNaN || b.isNaN || a == b) return 0.0;
+    if (rawA.isNaN || rawB.isNaN) return double.nan;
+    if (rawA == rawB) return 0.0;
+
+    final bool isInverted = rawA > rawB;
+    final a = isInverted ? rawB : rawA;
+    final b = isInverted ? rawA : rawB;
+    final double sign = isInverted ? -1.0 : 1.0;
 
     final h = (b - a) / n;
     double total = 0.0;
@@ -662,10 +854,11 @@ class LocalMathEngine {
       total += w * fVal;
     }
 
-    return total * (h / 3.0);
+    final result = total * (h / 3.0) * sign;
+    return result.abs() < 1e-12 ? 0.0 : result;
   }
 
-  /// Cuadratura 3D compuesta de Simpson iterada
+  /// Cuadratura 3D compuesta de Simpson iterada con soporte estricto de inversión de cotas
   static double _simpson3DGeneral({
     required String integrand,
     required String innerVar,
@@ -681,10 +874,16 @@ class LocalMathEngine {
   }) {
     if (n % 2 != 0) n++;
     final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
-    final outMin = MathExpressionEvaluator.evaluate(outerLower);
-    final outMax = MathExpressionEvaluator.evaluate(outerUpper);
+    final rawOutMin = MathExpressionEvaluator.evaluate(outerLower);
+    final rawOutMax = MathExpressionEvaluator.evaluate(outerUpper);
 
-    if (outMin.isNaN || outMax.isNaN || outMin == outMax) return 0.0;
+    if (rawOutMin.isNaN || rawOutMax.isNaN) return double.nan;
+    if (rawOutMin == rawOutMax) return 0.0;
+
+    final bool outInverted = rawOutMin > rawOutMax;
+    final outMin = outInverted ? rawOutMax : rawOutMin;
+    final outMax = outInverted ? rawOutMin : rawOutMax;
+    final double outSign = outInverted ? -1.0 : 1.0;
 
     final hOut = (outMax - outMin) / n;
     double outTotal = 0.0;
@@ -693,20 +892,27 @@ class LocalMathEngine {
       final outVal = outMin + k * hOut;
       final wOut = (k == 0 || k == n) ? 1.0 : ((k % 2 == 1) ? 4.0 : 2.0);
 
-      final mMin = MathExpressionEvaluator.evaluate(
+      final rawMMin = MathExpressionEvaluator.evaluate(
         midLower,
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
         z: outerVar == 'z' ? outVal : 0.0,
       );
-      final mMax = MathExpressionEvaluator.evaluate(
+      final rawMMax = MathExpressionEvaluator.evaluate(
         midUpper,
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
         z: outerVar == 'z' ? outVal : 0.0,
       );
 
-      if (mMin.isNaN || mMax.isNaN || mMax <= mMin) continue;
+      if (rawMMin.isNaN || rawMMax.isNaN) continue;
+      if (rawMMin == rawMMax) continue; // Longitud transversal cero
+
+      // Soporte canónico para límites invertidos intermedios (ej. ∫_9^4)
+      final bool midInverted = rawMMin > rawMMax;
+      final mMin = midInverted ? rawMMax : rawMMin;
+      final mMax = midInverted ? rawMMin : rawMMax;
+      final double midSign = midInverted ? -1.0 : 1.0;
 
       final hMid = (mMax - mMin) / n;
       double midTotal = 0.0;
@@ -724,20 +930,27 @@ class LocalMathEngine {
         if (midVar == 'y') yVal = midVal;
         if (midVar == 'z') zVal = midVal;
 
-        final inMin = MathExpressionEvaluator.evaluate(
+        final rawInMin = MathExpressionEvaluator.evaluate(
           innerLower,
           x: xVal,
           y: yVal,
           z: zVal,
         );
-        final inMax = MathExpressionEvaluator.evaluate(
+        final rawInMax = MathExpressionEvaluator.evaluate(
           innerUpper,
           x: xVal,
           y: yVal,
           z: zVal,
         );
 
-        if (inMin.isNaN || inMax.isNaN || inMax <= inMin) continue;
+        if (rawInMin.isNaN || rawInMax.isNaN) continue;
+        if (rawInMin == rawInMax) continue; // Longitud interior cero
+
+        // Soporte canónico para límites invertidos interiores
+        final bool inInverted = rawInMin > rawInMax;
+        final inMin = inInverted ? rawInMax : rawInMin;
+        final inMax = inInverted ? rawInMin : rawInMax;
+        final double inSign = inInverted ? -1.0 : 1.0;
 
         final hIn = (inMax - inMin) / n;
         double inTotal = 0.0;
@@ -761,15 +974,16 @@ class LocalMathEngine {
           inTotal += wIn * fVal;
         }
 
-        final inIntegral = inTotal * (hIn / 3.0);
+        final inIntegral = inTotal * (hIn / 3.0) * inSign;
         midTotal += wMid * inIntegral;
       }
 
-      final midIntegral = midTotal * (hMid / 3.0);
+      final midIntegral = midTotal * (hMid / 3.0) * midSign;
       outTotal += wOut * midIntegral;
     }
 
-    return outTotal * (hOut / 3.0);
+    final result = outTotal * (hOut / 3.0) * outSign;
+    return result.abs() < 1e-12 ? 0.0 : result;
   }
 
   /// Genera la geometría 3D nativa (vértices y caras) para el renderizador Flutter
@@ -875,28 +1089,46 @@ class LocalMathEngine {
     required String outerVar,
     required String outerLower,
     required String outerUpper,
-    int n = 24,
+    int n = 36,
   }) {
     if (n % 2 != 0) n++;
-    final outMin = MathExpressionEvaluator.evaluate(outerLower);
-    final outMax = MathExpressionEvaluator.evaluate(outerUpper);
-    final hy = (outMax - outMin) / n;
+    final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
+    final rawOutMin = MathExpressionEvaluator.evaluate(outerLower);
+    final rawOutMax = MathExpressionEvaluator.evaluate(outerUpper);
 
+    if (rawOutMin.isNaN || rawOutMax.isNaN) return double.nan;
+    if (rawOutMin == rawOutMax) return 0.0;
+
+    final bool outInverted = rawOutMin > rawOutMax;
+    final outMin = outInverted ? rawOutMax : rawOutMin;
+    final outMax = outInverted ? rawOutMin : rawOutMax;
+    final double outSign = outInverted ? -1.0 : 1.0;
+
+    final hy = (outMax - outMin) / n;
     double outerTotal = 0.0;
+
     for (int j = 0; j <= n; j++) {
       final outVal = outMin + j * hy;
       final wy = (j == 0 || j == n) ? 1.0 : ((j % 2 == 1) ? 4.0 : 2.0);
 
-      final inMin = MathExpressionEvaluator.evaluate(
+      final rawInMin = MathExpressionEvaluator.evaluate(
         innerLower,
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
       );
-      final inMax = MathExpressionEvaluator.evaluate(
+      final rawInMax = MathExpressionEvaluator.evaluate(
         innerUpper,
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
       );
+
+      if (rawInMin.isNaN || rawInMax.isNaN) continue;
+      if (rawInMin == rawInMax) continue;
+
+      final bool inInverted = rawInMin > rawInMax;
+      final inMin = inInverted ? rawInMax : rawInMin;
+      final inMax = inInverted ? rawInMin : rawInMax;
+      final double inSign = inInverted ? -1.0 : 1.0;
 
       final hx = (inMax - inMin) / n;
       double innerTotal = 0.0;
@@ -908,20 +1140,33 @@ class LocalMathEngine {
         final xVal = (innerVar == 'x') ? inVal : outVal;
         final yVal = (innerVar == 'y') ? inVal : outVal;
 
-        final fVal = MathExpressionEvaluator.evaluate(integrand, x: xVal, y: yVal);
+        final fVal = MathExpressionEvaluator.evaluate(normalized, x: xVal, y: yVal);
         if (fVal.isNaN || fVal.isInfinite) return double.nan;
         innerTotal += wx * fVal;
       }
 
-      final innerIntegralAtNode = innerTotal * (hx / 3.0);
+      final innerIntegralAtNode = innerTotal * (hx / 3.0) * inSign;
       outerTotal += wy * innerIntegralAtNode;
     }
 
-    return outerTotal * (hy / 3.0);
+    final result = outerTotal * (hy / 3.0) * outSign;
+    return result.abs() < 1e-12 ? 0.0 : result;
   }
 
   static String _cleanExpr(String expr) {
     return expr.replaceAll(' ', '').replaceAll('*', '^').replaceAll('^^', '^');
+  }
+
+  static bool _boundsMatch(List<dynamic> presetBounds, List<IntegrationBound> integralBounds) {
+    if (presetBounds.length != integralBounds.length) return false;
+    for (int i = 0; i < presetBounds.length; i++) {
+      final pb = presetBounds[i] as Map<String, dynamic>;
+      final ib = integralBounds[i];
+      if (pb['variable'].toString().toLowerCase() != ib.variable.toLowerCase()) return false;
+      if (_cleanExpr(pb['lower'].toString()) != _cleanExpr(ib.lower)) return false;
+      if (_cleanExpr(pb['upper'].toString()) != _cleanExpr(ib.upper)) return false;
+    }
+    return true;
   }
 
   static String _toLatexString(MultivariableIntegral integral) {

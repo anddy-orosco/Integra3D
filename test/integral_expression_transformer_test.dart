@@ -134,5 +134,88 @@ void main() {
       expect(solution.isSuccess, isFalse);
       expect(solution.errorMessage, contains('diverge'));
     });
+
+    test('correctly evaluates 1D integral with inverted limits applying inversion property (∫_9^4 x dx = -32.5)', () {
+      const inverted1D = MultivariableIntegral(
+        integrand: 'x',
+        bounds: [
+          IntegrationBound(variable: 'x', lower: '9', upper: '4'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(inverted1D);
+
+      expect(solution.isSuccess, isTrue);
+      expect(solution.approxNumeric, isNotNull);
+      // ∫_9^4 x dx = [x^2/2]_9^4 = (16 - 81)/2 = -32.5
+      expect(solution.approxNumeric!, closeTo(-32.5, 0.01));
+      expect(solution.steps.first.isLimitInverted, isTrue);
+      expect(solution.steps.first.appliedMethod, contains('Inversión'));
+      expect(solution.steps.first.evaluatedLatex, contains('-(F(9) - F(4))'));
+    });
+
+    test('correctly evaluates 1D integral with identical limits to zero (∫_5^5 x^2 dx = 0.0)', () {
+      const zero1D = MultivariableIntegral(
+        integrand: 'x^2',
+        bounds: [
+          IntegrationBound(variable: 'x', lower: '5', upper: '5'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(zero1D);
+
+      expect(solution.isSuccess, isTrue);
+      expect(solution.approxNumeric, 0.0);
+      expect(solution.steps.first.appliedMethod, contains('Idénticos'));
+    });
+
+    test('correctly solves intermediate inverted limits in 3D (user screenshot case: mid from 9 to 4)', () {
+      // Triple integral with middle bound inverted from 9 to 4:
+      // ∫_0^1 dx ∫_9^4 dy ∫_0^2 1 dz = 1 * (4 - 9) * 2 = -10.0
+      // Previously, 'mMax <= mMin continue;' caused this to return 0.0000!
+      const userCase3D = MultivariableIntegral(
+        integrand: '1',
+        bounds: [
+          IntegrationBound(variable: 'z', lower: '0', upper: '2'),
+          IntegrationBound(variable: 'y', lower: '9', upper: '4'), // Inverted intermediate bound!
+          IntegrationBound(variable: 'x', lower: '0', upper: '1'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(userCase3D);
+
+      expect(solution.isSuccess, isTrue);
+      expect(solution.approxNumeric, isNotNull);
+      expect(solution.approxNumeric!, closeTo(-10.0, 0.05));
+      expect(solution.approxNumeric!, isNot(0.0)); // Must NOT be 0.0000!
+
+      // Step 2 (middle variable y) must have isLimitInverted = true
+      expect(solution.steps[1].variable, 'y');
+      expect(solution.steps[1].isLimitInverted, isTrue);
+      expect(solution.steps[1].appliedMethod, contains('Inversión'));
+    });
+
+    test('correctly solves 2D double integral with inverted outer and inner bounds', () {
+      // ∫_2^0 dx ∫_9^4 1 dy = (-2) * (-5) = +10.0
+      const doubleInverted2D = MultivariableIntegral(
+        integrand: '1',
+        bounds: [
+          IntegrationBound(variable: 'y', lower: '9', upper: '4'),
+          IntegrationBound(variable: 'x', lower: '2', upper: '0'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(doubleInverted2D);
+
+      expect(solution.isSuccess, isTrue);
+      expect(solution.approxNumeric, isNotNull);
+      expect(solution.approxNumeric!, closeTo(10.0, 0.05));
+      expect(solution.steps[0].isLimitInverted, isTrue);
+      expect(solution.steps[1].isLimitInverted, isTrue);
+    });
   });
 }

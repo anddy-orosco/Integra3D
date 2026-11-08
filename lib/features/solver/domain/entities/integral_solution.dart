@@ -8,6 +8,8 @@ class SolverStep {
   final String evaluatedLatex;
   final String simplifiedResultLatex;
   final String explanation;
+  final String? appliedMethod;
+  final bool isLimitInverted;
 
   const SolverStep({
     required this.stepNumber,
@@ -19,6 +21,8 @@ class SolverStep {
     required this.evaluatedLatex,
     required this.simplifiedResultLatex,
     required this.explanation,
+    this.appliedMethod,
+    this.isLimitInverted = false,
   });
 
   factory SolverStep.fromJson(Map<String, dynamic> json) {
@@ -32,6 +36,8 @@ class SolverStep {
       evaluatedLatex: json['evaluated_latex'] as String? ?? '',
       simplifiedResultLatex: json['simplified_result_latex'] as String? ?? '',
       explanation: json['explanation'] as String? ?? '',
+      appliedMethod: json['applied_method'] as String?,
+      isLimitInverted: json['is_limit_inverted'] as bool? ?? false,
     );
   }
 }
