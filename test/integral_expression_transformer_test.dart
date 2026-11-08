@@ -217,5 +217,70 @@ void main() {
       expect(solution.steps[0].isLimitInverted, isTrue);
       expect(solution.steps[1].isLimitInverted, isTrue);
     });
+
+    test('solves textbook photo integral ∫_0^2 ∫_0^x 4xy dy dx with complete derivations matching user reference', () {
+      const photoIntegral = MultivariableIntegral(
+        integrand: '4 * x * y',
+        bounds: [
+          IntegrationBound(variable: 'y', lower: '0', upper: 'x'),
+          IntegrationBound(variable: 'x', lower: '0', upper: '2'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(photoIntegral);
+
+      expect(solution.isSuccess, isTrue);
+      expect(solution.exactLatex, '8');
+      expect(solution.approxNumeric, 8.0);
+      expect(solution.regionDefinition, isNotNull);
+      expect(solution.regionDefinition!, contains(r'0 \le x \le 2'));
+      expect(solution.regionDefinition!, contains(r'0 \le y \le x'));
+
+      expect(solution.steps.length, 2);
+
+      // Paso 1: Integral interna respecto a y
+      final step1 = solution.steps[0];
+      expect(step1.variable, 'y');
+      expect(step1.stepTitle, contains('Paso 1: Resolver la integral interna'));
+      expect(step1.stepIntegralLatex, contains(r'\int_{0}^{x} 4xy'));
+      expect(step1.constantTreatmentText, contains('Tratamos a x como una constante'));
+      expect(step1.antiderivativeWorkLatex, contains(r'2xy^2'));
+      expect(step1.limitsEvaluationText, contains('y = 0'));
+      expect(step1.evaluatedLatex, contains(r'2x^3'));
+      expect(step1.simplifiedResultLatex, r'2x^3');
+
+      // Paso 2: Integral externa respecto a x
+      final step2 = solution.steps[1];
+      expect(step2.variable, 'x');
+      expect(step2.stepTitle, contains('Paso 2: Resolver la integral externa'));
+      expect(step2.stepIntegralLatex, contains(r'\int_{0}^{2} 2x^3'));
+      expect(step2.constantTreatmentText, contains('Integramos respecto a x'));
+      expect(step2.antiderivativeWorkLatex, contains(r'\frac{x^4}{2}'));
+      expect(step2.limitsEvaluationText, contains('x = 0'));
+      expect(step2.evaluatedLatex, contains('8'));
+      expect(step2.simplifiedResultLatex, '8');
+    });
+
+    test('solves procedural monomial integral dynamically: ∫_0^3 ∫_0^x 4xy dy dx = 40.5 or 81/2', () {
+      const dynamicMonomial = MultivariableIntegral(
+        integrand: '4 * x * y',
+        bounds: [
+          IntegrationBound(variable: 'y', lower: '0', upper: 'x'),
+          IntegrationBound(variable: 'x', lower: '0', upper: '3'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(dynamicMonomial);
+
+      expect(solution.isSuccess, isTrue);
+      // \int_0^3 2x^3 dx = [x^4/2]_0^3 = 81/2 = 40.5
+      expect(solution.approxNumeric, closeTo(40.5, 0.01));
+      expect(solution.regionDefinition, contains(r'0 \le x \le 3'));
+      expect(solution.steps.length, 2);
+      expect(solution.steps[0].stepTitle, contains('Paso 1'));
+      expect(solution.steps[1].stepTitle, contains('Paso 2'));
+    });
   });
 }

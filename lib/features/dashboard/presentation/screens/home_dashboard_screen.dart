@@ -430,14 +430,65 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
 
     final bool hasInversion = solution.steps.any((s) => s.isLimitInverted);
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.all(16),
       physics: const BouncingScrollPhysics(),
-      itemCount: solution.steps.length + (hasInversion ? 1 : 0),
-      itemBuilder: (context, index) {
-        // Banner introductorio para propiedades de orientación si aplica
-        if (hasInversion && index == 0) {
-          return Container(
+      children: [
+        // 1. Cabecera Didáctica: Planteamiento Integral I = ...
+        Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.slateDark,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                'Planteamiento del Ejercicio:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: mathColors.secondaryAccent,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              LatexCard(
+                latex: 'I = ${solution.originalIntegralLatex.isEmpty ? "\\int f" : solution.originalIntegralLatex}',
+                isHighlight: true,
+              ),
+              if (solution.regionDefinition != null && solution.regionDefinition!.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.deepVoid.withAlpha(160),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: Text(
+                    solution.regionDefinition!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.pureWhite,
+                      height: 1.45,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // 2. Banner de Orientación / Inversión si aplica
+        if (hasInversion)
+          Container(
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -457,158 +508,282 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 ),
               ],
             ),
-          );
-        }
-
-        final stepIndex = hasInversion ? index - 1 : index;
-        final step = solution.steps[stepIndex];
-        final isZ = step.variable == 'z';
-        final isY = step.variable == 'y';
-        final axisColor = isZ
-            ? mathColors.axisZ
-            : (isY ? mathColors.axisY : mathColors.axisX);
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 14),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.slateDark,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: step.isLimitInverted
-                  ? AppColors.amberGlow.withAlpha(90)
-                  : AppColors.borderSubtle,
-              width: step.isLimitInverted ? 1.5 : 1.0,
-            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          color: step.isLimitInverted ? AppColors.amberGlow : mathColors.primaryAction,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${step.stepNumber}',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.deepVoid),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Integración respecto a d${step.variable}',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
-                      ),
-                    ],
-                  ),
-                  Wrap(
-                    spacing: 6,
-                    children: [
-                      // Badge de Método / Propiedad aplicada
-                      if (step.appliedMethod != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(22),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(120)),
+
+        // 3. Pasos Secuenciales Didácticos (Estructura de Libro de Texto Académico)
+        ...solution.steps.map((step) {
+          final isZ = step.variable == 'z';
+          final isY = step.variable == 'y';
+          final axisColor = isZ
+              ? mathColors.axisZ
+              : (isY ? mathColors.axisY : mathColors.axisX);
+
+          final String defaultTitle = step.stepNumber == 1
+              ? 'Paso 1: Resolver la integral interna (con respecto a ${step.variable})'
+              : (step.stepNumber == solution.steps.length
+                  ? 'Paso ${step.stepNumber}: Resolver la integral externa (con respecto a ${step.variable})'
+                  : 'Paso ${step.stepNumber}: Resolver la integral intermedia (con respecto a ${step.variable})');
+
+          final String defaultIntegralLabel = step.stepNumber == 1
+              ? 'La integral interna es:'
+              : (step.stepNumber == solution.steps.length
+                  ? 'La integral externa es:'
+                  : 'La integral intermedia es:');
+
+          final String defaultConstantText = step.stepNumber == 1
+              ? 'Tratamos las demás variables como constantes e integramos respecto a ${step.variable}:'
+              : 'Integramos respecto a ${step.variable}:';
+
+          final String defaultLimitsText =
+              'Ahora evaluamos en los límites ${step.variable} = ${step.lowerBoundLatex} y ${step.variable} = ${step.upperBoundLatex}:';
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.slateDark,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: step.isLimitInverted
+                    ? AppColors.amberGlow.withAlpha(90)
+                    : AppColors.borderSubtle,
+                width: step.isLimitInverted ? 1.5 : 1.0,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Encabezado del Paso + Badges
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: step.isLimitInverted ? AppColors.amberGlow : mathColors.primaryAction,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '${step.stepNumber}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.deepVoid),
+                            ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                step.isLimitInverted ? Icons.swap_vert_rounded : Icons.functions_rounded,
-                                size: 11,
-                                color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                step.appliedMethod!,
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              step.stepTitle ?? defaultTitle,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        if (step.appliedMethod != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(22),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(120)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  step.isLimitInverted ? Icons.swap_vert_rounded : Icons.functions_rounded,
+                                  size: 11,
                                   color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 4),
+                                Text(
+                                  step.appliedMethod!,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: axisColor.withAlpha(25),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: axisColor.withAlpha(120)),
+                          ),
+                          child: Text(
+                            'Eje ${step.variable.toUpperCase()}',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: axisColor),
                           ),
                         ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-                      // Axis canonical tag
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: axisColor.withAlpha(25),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: axisColor.withAlpha(120)),
-                        ),
-                        child: Text(
-                          'Eje ${step.variable.toUpperCase()}',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: axisColor,
+                // Alerta de inversión en este paso si aplica
+                if (step.isLimitInverted)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.amberGlow.withAlpha(15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.amberGlow.withAlpha(80)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.amberGlow),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Cotas invertidas: ${step.lowerBoundLatex} > ${step.upperBoundLatex}. Se aplicó la inversión canónica con factor (-1) preservando signos en F(b) - F(a).',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.amberGlow),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
 
-              // Didactic card específica si este paso tuvo inversión
-              if (step.isLimitInverted)
+                // 1. "La integral interna es:"
+                Text(
+                  defaultIntegralLabel,
+                  style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
+                ),
+                const SizedBox(height: 6),
+                LatexCard(
+                  latex: step.stepIntegralLatex ??
+                      '\\int_{${step.lowerBoundLatex}}^{${step.upperBoundLatex}} ${step.currentIntegrandLatex} \\, d${step.variable}',
+                ),
+
+                const SizedBox(height: 10),
+
+                // 2. "Tratamos a ... como una constante e integramos respecto a ...:"
+                Text(
+                  step.constantTreatmentText ?? defaultConstantText,
+                  style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
+                ),
+                const SizedBox(height: 6),
+                LatexCard(
+                  latex: step.antiderivativeWorkLatex ??
+                      '\\int ${step.currentIntegrandLatex} \\, d${step.variable} = ${step.antiderivativeLatex}',
+                ),
+
+                const SizedBox(height: 10),
+
+                // 3. "Ahora evaluamos en los límites ...:"
+                Text(
+                  step.limitsEvaluationText ?? defaultLimitsText,
+                  style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
+                ),
+                const SizedBox(height: 6),
+                LatexCard(latex: step.evaluatedLatex),
+
+                const SizedBox(height: 10),
+
+                // 4. Explicación didáctica y expresión resultante para el siguiente paso
+                if (step.explanation.isNotEmpty)
+                  Text(
+                    step.explanation,
+                    style: TextStyle(fontSize: 11, color: mathColors.metadataText.withAlpha(200), height: 1.4),
+                  ),
+
+                const SizedBox(height: 8),
                 Container(
-                  margin: const EdgeInsets.symmetric(vertical: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: AppColors.amberGlow.withAlpha(15),
+                    color: AppColors.deepVoid.withAlpha(140),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.amberGlow.withAlpha(80)),
+                    border: Border.all(color: mathColors.primaryAction.withAlpha(70)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.amberGlow),
+                      Icon(Icons.arrow_forward_rounded, size: 14, color: mathColors.primaryAction),
+                      const SizedBox(width: 8),
+                      Text(
+                        step.stepNumber == solution.steps.length
+                            ? 'Resultado final del cálculo:'
+                            : 'Expresión para el Paso ${step.stepNumber + 1}:',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mathColors.primaryAction),
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Cotas invertidas: ${step.lowerBoundLatex} > ${step.upperBoundLatex}. Se aplicó la inversión canónica con factor (-1) preservando signos en F(b) - F(a).',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.amberGlow),
+                          step.simplifiedResultLatex,
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
                         ),
                       ),
                     ],
                   ),
                 ),
+              ],
+            ),
+          );
+        }),
 
-              Text(step.explanation, style: TextStyle(fontSize: 11, color: mathColors.metadataText, height: 1.4)),
-              const Divider(color: AppColors.borderSubtle, height: 20),
-
-              Text('1. Antiderivada parcial:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.secondaryAccent)),
-              const SizedBox(height: 4),
-              LatexCard(latex: '\\int f \\, d${step.variable} = ${step.antiderivativeLatex}'),
-
+        // 4. Conclusión Final y Botón de Navegación 3D
+        Container(
+          margin: const EdgeInsets.only(top: 8, bottom: 24),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.slateDark,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: mathColors.primaryAction.withAlpha(120), width: 1.2),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                'Resultado Final de la Integral:',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: mathColors.primaryAction),
+              ),
               const SizedBox(height: 8),
-              Text('2. Evaluación de límites [a, b]:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.secondaryAccent)),
-              const SizedBox(height: 4),
-              LatexCard(latex: step.evaluatedLatex),
-
-              const SizedBox(height: 8),
-              Text('3. Resultado simplificado del paso:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: mathColors.mathWarning)),
-              const SizedBox(height: 4),
-              LatexCard(latex: step.simplifiedResultLatex, isHighlight: true),
+              LatexCard(
+                latex: 'I = ${solution.exactLatex}',
+                isHighlight: true,
+              ),
+              if (solution.approxNumeric != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Aproximación numérica: ≈ ${solution.approxNumeric}',
+                  style: TextStyle(fontSize: 12, color: mathColors.metadataText),
+                ),
+              ],
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: mathColors.primaryAction,
+                    foregroundColor: AppColors.deepVoid,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.view_in_ar_rounded, size: 18),
+                  label: const Text(
+                    'Explorar en el Espacio 3D',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: () => _tabController.animateTo(3),
+                ),
+              ),
             ],
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 

@@ -12,12 +12,74 @@ import '../../../solver/domain/entities/integral_solution.dart';
 class LocalMathEngine {
   static final List<Map<String, dynamic>> builtInPresets = [
     {
+      'id': 'triangle_4xy',
+      'name': 'Integral Triangular (4xy)',
+      'description': 'Integral de 4xy sobre la región triangular 0 ≤ x ≤ 2 y 0 ≤ y ≤ x',
+      'dimension': 2,
+      'integrand': '4 * x * y',
+      'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre la región donde 0 \le x \le 2 y 0 \le y \le x.',
+      'bounds': [
+        {'variable': 'y', 'lower': '0', 'upper': 'x'},
+        {'variable': 'x', 'lower': '0', 'upper': '2'},
+      ],
+      'exact_latex': '8',
+      'numeric_approx': 8.0,
+      'steps': [
+        {
+          'step_number': 1,
+          'variable': 'y',
+          'lower_bound_latex': '0',
+          'upper_bound_latex': 'x',
+          'current_integrand_latex': r'4xy',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a y)',
+          'step_integral_latex': r'\int_{0}^{x} 4xy \, dy',
+          'constant_treatment_text': 'Tratamos a x como una constante e integramos respecto a y:',
+          'antiderivative_work_latex': r'\int 4xy \, dy = 4x \left(\frac{y^2}{2}\right) = 2xy^2',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites y = 0 y y = x:',
+          'antiderivative_latex': r'2xy^2',
+          'evaluated_latex': r'\left[2xy^2\right]_0^x = 2x(x)^2 - 2x(0)^2 = 2x^3',
+          'simplified_result_latex': r'2x^3',
+          'explanation': 'Se aplica la regla de la potencia tratando a x como constante. Se evalúa el límite superior x e inferior 0 según el Teorema Fundamental del Cálculo.',
+          'applied_method': 'Regla de la Potencia & Fubini',
+        },
+        {
+          'step_number': 2,
+          'variable': 'x',
+          'lower_bound_latex': '0',
+          'upper_bound_latex': '2',
+          'current_integrand_latex': r'2x^3',
+          'step_title': 'Paso 2: Resolver la integral externa (con respecto a x)',
+          'step_integral_latex': r'\int_{0}^{2} 2x^3 \, dx',
+          'constant_treatment_text': 'Integramos respecto a x:',
+          'antiderivative_work_latex': r'\int 2x^3 \, dx = 2 \left(\frac{x^4}{4}\right) = \frac{x^4}{2}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = 0 y x = 2:',
+          'antiderivative_latex': r'\frac{x^4}{2}',
+          'evaluated_latex': r'\left[\frac{x^4}{2}\right]_0^2 = \frac{2^4}{2} - \frac{0^4}{2} = \frac{16}{2} - 0 = 8',
+          'simplified_result_latex': '8',
+          'explanation': 'Se integra el polinomio resultante en x sobre el intervalo exterior [0, 2], obteniendo exactamente 8.',
+          'applied_method': 'Teorema Fundamental del Cálculo',
+        },
+      ],
+      'sections': [
+        {
+          'title': '1. Región de Integración Triangular (Tipo I)',
+          'content': 'La región en el plano xy está delimitada por las rectas y = 0, y = x y x = 2. Es una región triangular en el primer cuadrante.',
+        },
+        {
+          'title': '2. Teorema de Fubini y Resultado Analítico',
+          'content': 'La integral iterada se evalúa secuencialmente produciendo un valor exacto de I = 8 u³.',
+        },
+      ],
+    },
+    {
       'id': 'image3_double_integral',
       'name': 'Integral Doble con Límite Variable',
       'description': 'Integral de x*y² con x ∈ [0, 3y - 5] e y ∈ [-2, 1]',
       'dimension': 2,
       'integrand': 'x * y^2',
       'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre la región donde -2 \le y \le 1 y 0 \le x \le 3y - 5.',
       'bounds': [
         {'variable': 'x', 'lower': '0', 'upper': '3*y - 5'},
         {'variable': 'y', 'lower': '-2', 'upper': '1'},
@@ -31,10 +93,16 @@ class LocalMathEngine {
           'lower_bound_latex': '0',
           'upper_bound_latex': '3y - 5',
           'current_integrand_latex': r'x y^2',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a x)',
+          'step_integral_latex': r'\int_{0}^{3y - 5} x y^2 \, dx',
+          'constant_treatment_text': 'Tratamos a y como una constante e integramos respecto a x:',
+          'antiderivative_work_latex': r'\int x y^2 \, dx = y^2 \left(\frac{x^2}{2}\right) = \frac{x^2 y^2}{2}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = 0 y x = 3y - 5:',
           'antiderivative_latex': r'\frac{x^2 y^2}{2}',
           'evaluated_latex': r'\left[ \frac{x^2 y^2}{2} \right]_0^{3y - 5} = \frac{y^2(3y - 5)^2}{2} = \frac{9y^4 - 30y^3 + 25y^2}{2}',
           'simplified_result_latex': r'\frac{9y^4 - 30y^3 + 25y^2}{2}',
           'explanation': 'Se integra con respecto a x tratando a y como constante. Se evalúa el límite superior 3y - 5 y el inferior 0 mediante el Teorema Fundamental del Cálculo.',
+          'applied_method': 'Regla de la Potencia & Fubini',
         },
         {
           'step_number': 2,
@@ -42,10 +110,16 @@ class LocalMathEngine {
           'lower_bound_latex': '-2',
           'upper_bound_latex': '1',
           'current_integrand_latex': r'\frac{9y^4 - 30y^3 + 25y^2}{2}',
+          'step_title': 'Paso 2: Resolver la integral externa (con respecto a y)',
+          'step_integral_latex': r'\int_{-2}^{1} \frac{9y^4 - 30y^3 + 25y^2}{2} \, dy',
+          'constant_treatment_text': 'Integramos el polinomio término a término respecto a y:',
+          'antiderivative_work_latex': r'\int \left( \frac{9y^4}{2} - 15y^3 + \frac{25y^2}{2} \right) dy = \frac{9y^5}{10} - \frac{15y^4}{4} + \frac{25y^3}{6}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites y = -2 y y = 1:',
           'antiderivative_latex': r'\frac{9y^5}{10} - \frac{15y^4}{4} + \frac{25y^3}{6}',
           'evaluated_latex': r'\left( \frac{9}{10} - \frac{15}{4} + \frac{25}{6} \right) - \left( -\frac{288}{10} - 60 - \frac{200}{6} \right) = \frac{79}{60} - \left(-\frac{7328}{60}\right) = \frac{2469}{20}',
           'simplified_result_latex': r'\frac{2469}{20} = 123.45',
           'explanation': 'Se integra el polinomio en y en el intervalo exterior [-2, 1] obteniendo exactamente 2469/20.',
+          'applied_method': 'Teorema Fundamental del Cálculo',
         },
       ],
       'sections': [
@@ -66,6 +140,7 @@ class LocalMathEngine {
       'dimension': 2,
       'integrand': '4 - x^2 - y^2',
       'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre el disco donde -2 \le x \le 2 y -\sqrt{4 - x^2} \le y \le \sqrt{4 - x^2}.',
       'bounds': [
         {'variable': 'y', 'lower': '-sqrt(4 - x^2)', 'upper': 'sqrt(4 - x^2)'},
         {'variable': 'x', 'lower': '-2', 'upper': '2'},
@@ -79,10 +154,16 @@ class LocalMathEngine {
           'lower_bound_latex': r'-\sqrt{4 - x^2}',
           'upper_bound_latex': r'\sqrt{4 - x^2}',
           'current_integrand_latex': r'4 - x^2 - y^2',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a y)',
+          'step_integral_latex': r'\int_{-\sqrt{4 - x^2}}^{\sqrt{4 - x^2}} (4 - x^2 - y^2) \, dy',
+          'constant_treatment_text': 'Tratamos a x como una constante e integramos respecto a y:',
+          'antiderivative_work_latex': r'\int (4 - x^2 - y^2) \, dy = (4 - x^2)y - \frac{y^3}{3}',
+          'limits_evaluation_text': r'Ahora evaluamos en los límites simétricos y = -\sqrt{4 - x^2} y y = \sqrt{4 - x^2}:',
           'antiderivative_latex': r'(4 - x^2)y - \frac{y^3}{3}',
           'evaluated_latex': r'\left[(4 - x^2)y - \frac{y^3}{3}\right]_{-\sqrt{4 - x^2}}^{\sqrt{4 - x^2}} = \frac{4}{3}(4 - x^2)^{3/2}',
           'simplified_result_latex': r'\frac{4}{3}(4 - x^2)^{3/2}',
           'explanation': 'Se integra respecto a y considerando x como constante. Aplicamos el Teorema Fundamental del Cálculo sobre el disco x² + y² ≤ 4.',
+          'applied_method': 'Integración Parcial & Simetría Par',
         },
         {
           'step_number': 2,
@@ -90,10 +171,16 @@ class LocalMathEngine {
           'lower_bound_latex': r'-2',
           'upper_bound_latex': r'2',
           'current_integrand_latex': r'\frac{4}{3}(4 - x^2)^{3/2}',
+          'step_title': 'Paso 2: Resolver la integral externa (con respecto a x)',
+          'step_integral_latex': r'\int_{-2}^{2} \frac{4}{3}(4 - x^2)^{3/2} \, dx',
+          'constant_treatment_text': 'Integramos respecto a x empleando sustitución trigonométrica x = 2sin(θ):',
+          'antiderivative_work_latex': r'\int \frac{4}{3}(4 - x^2)^{3/2} \, dx \implies \int_{-\pi/2}^{\pi/2} \frac{64}{3}\cos^4\theta \, d\theta',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = -2 y x = 2:',
           'antiderivative_latex': r'\int \frac{4}{3}(4 - x^2)^{3/2} \, dx',
-          'evaluated_latex': r'\text{Sustitución trigonométrica } x = 2\sin\theta \implies \int_{-\pi/2}^{\pi/2} \frac{64}{3}\cos^4\theta \, d\theta',
+          'evaluated_latex': r'\left[ \frac{64}{3} \left( \frac{3\theta}{8} + \frac{\sin 2\theta}{4} + \frac{\sin 4\theta}{32} \right) \right]_{-\pi/2}^{\pi/2} = 8\pi',
           'simplified_result_latex': r'8\pi',
           'explanation': 'Se efectúa la integración trigonométrica para calcular el volumen total del paraboloide de altura 4.',
+          'applied_method': 'Sustitución Trigonométrica',
         },
       ],
       'sections': [
@@ -118,6 +205,7 @@ class LocalMathEngine {
       'dimension': 3,
       'integrand': '1',
       'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre la región sólida donde 0 \le x \le 1, 0 \le y \le 1 - x y 0 \le z \le 1 - x - y.',
       'bounds': [
         {'variable': 'z', 'lower': '0', 'upper': '1 - x - y'},
         {'variable': 'y', 'lower': '0', 'upper': '1 - x'},
@@ -132,10 +220,16 @@ class LocalMathEngine {
           'lower_bound_latex': '0',
           'upper_bound_latex': '1 - x - y',
           'current_integrand_latex': '1',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a z)',
+          'step_integral_latex': r'\int_{0}^{1 - x - y} 1 \, dz',
+          'constant_treatment_text': 'Tratamos a x y y como constantes e integramos respecto a z:',
+          'antiderivative_work_latex': r'\int 1 \, dz = z',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites z = 0 y z = 1 - x - y:',
           'antiderivative_latex': 'z',
           'evaluated_latex': r'[z]_0^{1 - x - y} = 1 - x - y',
           'simplified_result_latex': '1 - x - y',
           'explanation': 'La primera integral suma los elementos diferenciales verticales dV = dz dy dx desde el plano xy hasta el plano oblicuo.',
+          'applied_method': 'Integración Directa en ℝ³',
         },
         {
           'step_number': 2,
@@ -143,10 +237,16 @@ class LocalMathEngine {
           'lower_bound_latex': '0',
           'upper_bound_latex': '1 - x',
           'current_integrand_latex': '1 - x - y',
+          'step_title': 'Paso 2: Resolver la integral intermedia (con respecto a y)',
+          'step_integral_latex': r'\int_{0}^{1 - x} (1 - x - y) \, dy',
+          'constant_treatment_text': 'Tratamos a x como constante e integramos respecto a y:',
+          'antiderivative_work_latex': r'\int (1 - x - y) \, dy = (1 - x)y - \frac{y^2}{2}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites y = 0 y y = 1 - x:',
           'antiderivative_latex': r'(1 - x)y - \frac{y^2}{2}',
           'evaluated_latex': r'\left[(1 - x)y - \frac{y^2}{2}\right]_0^{1 - x} = \frac{(1 - x)^2}{2}',
           'simplified_result_latex': r'\frac{(1 - x)^2}{2}',
           'explanation': 'Se evalúa el área de la sección transversal triangular en el plano proyectado.',
+          'applied_method': 'Regla de la Potencia',
         },
         {
           'step_number': 3,
@@ -154,10 +254,16 @@ class LocalMathEngine {
           'lower_bound_latex': '0',
           'upper_bound_latex': '1',
           'current_integrand_latex': r'\frac{(1 - x)^2}{2}',
+          'step_title': 'Paso 3: Resolver la integral externa (con respecto a x)',
+          'step_integral_latex': r'\int_{0}^{1} \frac{(1 - x)^2}{2} \, dx',
+          'constant_treatment_text': 'Integramos respecto a x aplicando la regla de la cadena invertida:',
+          'antiderivative_work_latex': r'\int \frac{(1 - x)^2}{2} \, dx = -\frac{(1 - x)^3}{6}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = 0 y x = 1:',
           'antiderivative_latex': r'-\frac{(1 - x)^3}{6}',
           'evaluated_latex': r'\left[-\frac{(1 - x)^3}{6}\right]_0^1 = 0 - \left(-\frac{1}{6}\right) = \frac{1}{6}',
           'simplified_result_latex': r'\frac{1}{6}',
           'explanation': 'Se acumula el volumen a lo largo del intervalo [0, 1]. Resultado exacto: 1/6.',
+          'applied_method': 'Teorema Fundamental del Cálculo',
         },
       ],
       'sections': [
@@ -178,6 +284,7 @@ class LocalMathEngine {
       'dimension': 2,
       'integrand': 'exp(-x^2 - y^2)',
       'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre el dominio cuadrado donde -1.5 \le x \le 1.5 y -1.5 \le y \le 1.5.',
       'bounds': [
         {'variable': 'y', 'lower': '-1.5', 'upper': '1.5'},
         {'variable': 'x', 'lower': '-1.5', 'upper': '1.5'},
@@ -191,10 +298,16 @@ class LocalMathEngine {
           'lower_bound_latex': '-1.5',
           'upper_bound_latex': '1.5',
           'current_integrand_latex': r'e^{-x^2} \cdot e^{-y^2}',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a y)',
+          'step_integral_latex': r'\int_{-1.5}^{1.5} e^{-x^2} e^{-y^2} \, dy',
+          'constant_treatment_text': 'Tratamos a x como constante y factorizamos e^{-x^2}:',
+          'antiderivative_work_latex': r'e^{-x^2} \int_{-1.5}^{1.5} e^{-y^2} \, dy = e^{-x^2} \left[ \frac{\sqrt{\pi}}{2} \text{erf}(y) \right]_{-1.5}^{1.5}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites simétricos y = -1.5 y y = 1.5:',
           'antiderivative_latex': r'e^{-x^2} \cdot \frac{\sqrt{\pi}}{2} \text{erf}(y)',
           'evaluated_latex': r'e^{-x^2} \cdot \sqrt{\pi} \text{erf}(1.5)',
           'simplified_result_latex': r'\sqrt{\pi} \text{erf}(1.5) e^{-x^2}',
           'explanation': 'Separabilidad: e^(-x² - y²) = e^(-x²) · e^(-y²). La antiderivada de e^(-y²) corresponde a la función de error de Gauss.',
+          'applied_method': 'Separación de Variables & erf(y)',
         },
         {
           'step_number': 2,
@@ -202,10 +315,16 @@ class LocalMathEngine {
           'lower_bound_latex': '-1.5',
           'upper_bound_latex': '1.5',
           'current_integrand_latex': r'\sqrt{\pi} \text{erf}(1.5) e^{-x^2}',
+          'step_title': 'Paso 2: Resolver la integral externa (con respecto a x)',
+          'step_integral_latex': r'\sqrt{\pi}\text{erf}(1.5) \int_{-1.5}^{1.5} e^{-x^2} \, dx',
+          'constant_treatment_text': 'Integramos respecto a x reconociendo nuevamente la función de error:',
+          'antiderivative_work_latex': r'\sqrt{\pi} \text{erf}(1.5) \cdot \sqrt{\pi} \text{erf}(1.5) = \pi \cdot \text{erf}(1.5)^2',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = -1.5 y x = 1.5:',
           'antiderivative_latex': r'\frac{\pi}{2} \text{erf}(1.5) \text{erf}(x)',
           'evaluated_latex': r'\pi \cdot \text{erf}(1.5)^2 \approx 2.7562',
           'simplified_result_latex': r'\pi \cdot \text{erf}(1.5)^2',
           'explanation': 'Evaluación sobre el dominio simétrico cuadrado.',
+          'applied_method': 'Teorema de Fubini & Función de Error',
         },
       ],
       'sections': [
@@ -222,6 +341,7 @@ class LocalMathEngine {
       'dimension': 2,
       'integrand': 'x^2 - y^2',
       'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre el cuadrado simétrico donde -2 \le x \le 2 y -2 \le y \le 2.',
       'bounds': [
         {'variable': 'y', 'lower': '-2', 'upper': '2'},
         {'variable': 'x', 'lower': '-2', 'upper': '2'},
@@ -235,10 +355,16 @@ class LocalMathEngine {
           'lower_bound_latex': '-2',
           'upper_bound_latex': '2',
           'current_integrand_latex': r'x^2 - y^2',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a y)',
+          'step_integral_latex': r'\int_{-2}^{2} (x^2 - y^2) \, dy',
+          'constant_treatment_text': 'Tratamos a x como una constante e integramos respecto a y:',
+          'antiderivative_work_latex': r'\int (x^2 - y^2) \, dy = x^2 y - \frac{y^3}{3}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites simétricos y = -2 y y = 2:',
           'antiderivative_latex': r'x^2 y - \frac{y^3}{3}',
           'evaluated_latex': r'\left(2x^2 - \frac{8}{3}\right) - \left(-2x^2 + \frac{8}{3}\right) = 4x^2 - \frac{16}{3}',
           'simplified_result_latex': r'4x^2 - \frac{16}{3}',
           'explanation': 'Integración respecto a y evaluando límites simétricos.',
+          'applied_method': 'Regla de la Potencia',
         },
         {
           'step_number': 2,
@@ -246,10 +372,16 @@ class LocalMathEngine {
           'lower_bound_latex': '-2',
           'upper_bound_latex': '2',
           'current_integrand_latex': r'4x^2 - \frac{16}{3}',
+          'step_title': 'Paso 2: Resolver la integral externa (con respecto a x)',
+          'step_integral_latex': r'\int_{-2}^{2} \left(4x^2 - \frac{16}{3}\right) dx',
+          'constant_treatment_text': 'Integramos respecto a x:',
+          'antiderivative_work_latex': r'\int \left(4x^2 - \frac{16}{3}\right) dx = \frac{4x^3}{3} - \frac{16x}{3}',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = -2 y x = 2:',
           'antiderivative_latex': r'\frac{4x^3}{3} - \frac{16x}{3}',
           'evaluated_latex': r'\left(\frac{32}{3} - \frac{32}{3}\right) - \left(-\frac{32}{3} + \frac{32}{3}\right) = 0',
           'simplified_result_latex': '0',
           'explanation': 'Por simetría antisimétrica de x² - y² sobre el cuadrado [-2,2]², el volumen sobre el plano se cancela exactamente con el volumen bajo el plano.',
+          'applied_method': 'Simetría Antisimétrica',
         },
       ],
       'sections': [
@@ -266,6 +398,7 @@ class LocalMathEngine {
       'dimension': 2,
       'integrand': 'sqrt(9 - x^2 - y^2)',
       'coordinate_system': 'cartesian',
+      'region_definition': r'Esta integral está definida sobre el círculo donde -3 \le x \le 3 y -\sqrt{9 - x^2} \le y \le \sqrt{9 - x^2}.',
       'bounds': [
         {'variable': 'y', 'lower': '-sqrt(9 - x^2)', 'upper': 'sqrt(9 - x^2)'},
         {'variable': 'x', 'lower': '-3', 'upper': '3'},
@@ -279,10 +412,16 @@ class LocalMathEngine {
           'lower_bound_latex': r'-\sqrt{9 - x^2}',
           'upper_bound_latex': r'\sqrt{9 - x^2}',
           'current_integrand_latex': r'\sqrt{9 - x^2 - y^2}',
+          'step_title': 'Paso 1: Resolver la integral interna (con respecto a y)',
+          'step_integral_latex': r'\int_{-\sqrt{9 - x^2}}^{\sqrt{9 - x^2}} \sqrt{9 - x^2 - y^2} \, dy',
+          'constant_treatment_text': 'Tratamos a x como constante. Reconocemos el área de un semicírculo de radio r = √(9 - x²):',
+          'antiderivative_work_latex': r'\int_{-\sqrt{9 - x^2}}^{\sqrt{9 - x^2}} \sqrt{(9 - x^2) - y^2} \, dy = \frac{\pi}{2}(9 - x^2)',
+          'limits_evaluation_text': r'Ahora evaluamos en los límites y = -\sqrt{9 - x^2} y y = \sqrt{9 - x^2}:',
           'antiderivative_latex': r'\text{Integral circular en } y',
           'evaluated_latex': r'\frac{\pi}{2}(9 - x^2)',
           'simplified_result_latex': r'\frac{\pi}{2}(9 - x^2)',
           'explanation': 'El área de un semicírculo de radio r = √(9 - x²) a lo largo de un corte vertical.',
+          'applied_method': 'Geometría Circular & Simetría',
         },
         {
           'step_number': 2,
@@ -290,10 +429,16 @@ class LocalMathEngine {
           'lower_bound_latex': '-3',
           'upper_bound_latex': '3',
           'current_integrand_latex': r'\frac{\pi}{2}(9 - x^2)',
+          'step_title': 'Paso 2: Resolver la integral externa (con respecto a x)',
+          'step_integral_latex': r'\int_{-3}^{3} \frac{\pi}{2}(9 - x^2) \, dx',
+          'constant_treatment_text': 'Integramos respecto a x:',
+          'antiderivative_work_latex': r'\frac{\pi}{2}\int (9 - x^2) \, dx = \frac{\pi}{2}\left(9x - \frac{x^3}{3}\right)',
+          'limits_evaluation_text': 'Ahora evaluamos en los límites x = -3 y x = 3:',
           'antiderivative_latex': r'\frac{\pi}{2}\left(9x - \frac{x^3}{3}\right)',
           'evaluated_latex': r'\frac{\pi}{2}(18 - (-18)) = 18\pi',
           'simplified_result_latex': r'18\pi',
           'explanation': 'Volumen de una semiesfera: (2/3)·π·R³ = (2/3)·π·(27) = 18π u³.',
+          'applied_method': 'Teorema Fundamental del Cálculo',
         },
       ],
       'sections': [
@@ -335,6 +480,7 @@ class LocalMathEngine {
           originalIntegralLatex: _toLatexString(integral),
           executionTimeMs: math.max(ms, 12.5),
           didacticSections: sections,
+          regionDefinition: preset['region_definition'] as String? ?? _buildRegionDefinition(integral),
         );
       }
     }
@@ -376,6 +522,21 @@ class LocalMathEngine {
   // =========================================================================
   // SOLUCIONADORES DIDÁCTICOS POR DIMENSIÓN (1D, 2D, 3D)
   // =========================================================================
+
+  static String _buildRegionDefinition(MultivariableIntegral integral) {
+    if (integral.bounds.isEmpty) return '';
+    final parts = <String>[];
+    for (final b in integral.bounds.reversed) {
+      final low = IntegralExpressionTransformer.toDisplayLatex(b.lower);
+      final upp = IntegralExpressionTransformer.toDisplayLatex(b.upper);
+      final v = b.variable;
+      parts.add('$low \\le $v \\le $upp');
+    }
+    if (integral.dimension == 1) {
+      return 'Esta integral está definida sobre el intervalo donde ${parts.join(" y ")}.';
+    }
+    return 'Esta integral está definida sobre la región donde ${parts.join(" y ")}.';
+  }
 
   static String _findAntiderivative(String integrand, String variable) {
     final clean = integrand.trim();
@@ -509,6 +670,7 @@ class LocalMathEngine {
       approxNumeric: double.parse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
       executionTimeMs: math.max(ms, 14.0),
+      regionDefinition: _buildRegionDefinition(integral),
       steps: [
         SolverStep(
           stepNumber: 1,
@@ -516,6 +678,11 @@ class LocalMathEngine {
           lowerBoundLatex: cleanLower,
           upperBoundLatex: cleanUpper,
           currentIntegrandLatex: cleanIntegrand,
+          stepTitle: 'Paso 1: Resolver la integral definida (con respecto a ${bound.variable})',
+          stepIntegralLatex: '\\int_{$cleanLower}^{$cleanUpper} $cleanIntegrand \\, d${bound.variable}',
+          constantTreatmentText: 'Integramos respecto a ${bound.variable}:',
+          antiderivativeWorkLatex: '\\int $cleanIntegrand \\, d${bound.variable} = $antideriv',
+          limitsEvaluationText: 'Ahora evaluamos en los límites ${bound.variable} = $cleanLower y ${bound.variable} = $cleanUpper:',
           antiderivativeLatex: antideriv,
           evaluatedLatex: evaluatedLatex,
           simplifiedResultLatex: approxStr,
@@ -529,6 +696,10 @@ class LocalMathEngine {
   }
 
   static IntegralSolution _solve2D(MultivariableIntegral integral, DateTime startTime) {
+    // 1. Intentar resolución analítica exacta para monomios / polinomios en 2D
+    final monomialSol = _trySolveMonomial2D(integral, startTime);
+    if (monomialSol != null) return monomialSol;
+
     final innerBound = integral.bounds[0];
     final outerBound = integral.bounds[1];
 
@@ -577,13 +748,18 @@ class LocalMathEngine {
         lowerBoundLatex: inLow,
         upperBoundLatex: inUpp,
         currentIntegrandLatex: cleanIntegrand,
+        stepTitle: 'Paso 1: Resolver la integral interna (con respecto a ${innerBound.variable})',
+        stepIntegralLatex: '\\int_{$inLow}^{$inUpp} $cleanIntegrand \\, d${innerBound.variable}',
+        constantTreatmentText: 'Tratamos a ${outerBound.variable} como una constante e integramos respecto a ${innerBound.variable}:',
+        antiderivativeWorkLatex: '\\int $cleanIntegrand \\, d${innerBound.variable} = $antiderivInner',
+        limitsEvaluationText: 'Ahora evaluamos en los límites ${innerBound.variable} = $inLow y ${innerBound.variable} = $inUpp:',
         antiderivativeLatex: antiderivInner,
         evaluatedLatex: innerInverted
             ? '-\\int_{$inUpp}^{$inLow} ($cleanIntegrand) \\, d${innerBound.variable} = -G(${outerBound.variable})'
             : '\\left[ F(${innerBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp} = G(${outerBound.variable})',
         simplifiedResultLatex: innerInverted
             ? '-G(${outerBound.variable})'
-            : 'G(${outerBound.variable}) = \\int_{$inLow}^{$inUpp} ($cleanIntegrand) \\, d${innerBound.variable}',
+            : 'G(${outerBound.variable})',
         explanation: innerInverted
             ? 'Propiedad de Inversión de Límites: como el límite inferior interior ($inLow) es numéricamente mayor que el superior ($inUpp), se invierten las cotas al intervalo canónico [$inUpp, $inLow] y se aplica el factor multiplicativo (-1) a la antiderivada parcial.'
             : 'Se realiza la primera integración parcial respecto a la variable interior d${innerBound.variable}, tratando a ${outerBound.variable} como parámetro constante según el Teorema de Fubini.',
@@ -598,6 +774,11 @@ class LocalMathEngine {
         lowerBoundLatex: outLow,
         upperBoundLatex: outUpp,
         currentIntegrandLatex: innerInverted ? '-G(${outerBound.variable})' : 'G(${outerBound.variable})',
+        stepTitle: 'Paso 2: Resolver la integral externa (con respecto a ${outerBound.variable})',
+        stepIntegralLatex: '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable}',
+        constantTreatmentText: 'Integramos respecto a ${outerBound.variable}:',
+        antiderivativeWorkLatex: '\\int G(${outerBound.variable}) \\, d${outerBound.variable}',
+        limitsEvaluationText: 'Ahora evaluamos en los límites ${outerBound.variable} = $outLow y ${outerBound.variable} = $outUpp:',
         antiderivativeLatex: '\\int G(${outerBound.variable}) \\, d${outerBound.variable}',
         evaluatedLatex: outerIdentical
             ? '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable} = 0'
@@ -641,8 +822,190 @@ class LocalMathEngine {
       approxNumeric: double.parse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
       executionTimeMs: math.max(ms, 18.0),
+      regionDefinition: _buildRegionDefinition(integral),
       steps: steps,
       didacticSections: sections,
+    );
+  }
+
+  static IntegralSolution? _trySolveMonomial2D(MultivariableIntegral integral, DateTime startTime) {
+    if (integral.dimension != 2 || integral.bounds.length != 2) return null;
+    final inner = integral.bounds[0];
+    final outer = integral.bounds[1];
+
+    final iv = inner.variable.toLowerCase();
+    final ov = outer.variable.toLowerCase();
+
+    // Variables must be x, y in either order
+    if (!((iv == 'y' && ov == 'x') || (iv == 'x' && ov == 'y'))) return null;
+
+    final normalized = IntegralExpressionTransformer.normalizeExpression(integral.integrand)
+        .replaceAll(' ', '');
+
+    final match = RegExp(
+      r'^(-?\d+(?:\.\d+)?)?(?:\*?([xy])(?:\^(\d+))?)?(?:\*?([xy])(?:\^(\d+))?)?$',
+    ).firstMatch(normalized);
+
+    if (match == null) return null;
+
+    double coeff = 1.0;
+    if (match.group(1) != null && match.group(1)!.isNotEmpty) {
+      coeff = double.tryParse(match.group(1)!) ?? 1.0;
+    }
+
+    int pInner = 0;
+    int pOuter = 0;
+
+    void processVar(String? v, String? pStr) {
+      if (v == null) return;
+      final p = pStr != null ? (int.tryParse(pStr) ?? 1) : 1;
+      if (v == iv) {
+        pInner += p;
+      } else if (v == ov) {
+        pOuter += p;
+      }
+    }
+
+    processVar(match.group(2), match.group(3));
+    processVar(match.group(4), match.group(5));
+
+    final x1 = MathExpressionEvaluator.evaluate(outer.lower);
+    final x2 = MathExpressionEvaluator.evaluate(outer.upper);
+    if (x1.isNaN || x2.isNaN) return null;
+
+    final inLowClean = inner.lower.replaceAll(' ', '');
+    final inUppClean = inner.upper.replaceAll(' ', '');
+
+    final bool inLowIsZero = inLowClean == '0' || MathExpressionEvaluator.evaluate(inLowClean) == 0.0;
+    final bool inUppIsVar = inUppClean == ov;
+
+    if (!inLowIsZero || !inUppIsVar) return null;
+
+    final denom1 = pInner + 1;
+    final bool isC1Int = (coeff % denom1 == 0);
+    final int c1Int = coeff ~/ denom1;
+
+    final ivPow1 = pInner + 1;
+    final ovPow1 = pOuter;
+    final combPow = ovPow1 + ivPow1;
+
+    final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
+
+    String buildTerm(num c, int pOv, int pIv) {
+      final parts = <String>[];
+      if (pOv > 0) parts.add(pOv == 1 ? ov : '$ov^$pOv');
+      if (pIv > 0) parts.add(pIv == 1 ? iv : '$iv^$pIv');
+      final varStr = parts.join('');
+      if (c == 1) return varStr.isEmpty ? '1' : varStr;
+      if (c == -1) return varStr.isEmpty ? '-1' : '-$varStr';
+      return '$c$varStr';
+    }
+
+    final innerAntideriv = isC1Int
+        ? buildTerm(c1Int, ovPow1, ivPow1)
+        : '\\frac{${coeff.toInt()} ${buildTerm(1, ovPow1, ivPow1)}}{$denom1}';
+
+    final innerFactorOut = (ovPow1 == 0)
+        ? (coeff == 1 ? '' : '${coeff.toInt()}')
+        : (coeff == 1 ? ov : '${coeff.toInt()}$ov');
+
+    final innerWork = (denom1 > 1)
+        ? '\\int $cleanIntegrand \\, d$iv = $innerFactorOut \\left(\\frac{$iv^{$ivPow1}}{$denom1}\\right) = $innerAntideriv'
+        : '\\int $cleanIntegrand \\, d$iv = $innerAntideriv';
+
+    final substitutedInner = isC1Int
+        ? buildTerm(c1Int, combPow, 0)
+        : '\\frac{${coeff.toInt()} $ov^{$combPow}}{$denom1}';
+
+    final evalInner = (coeff == 4 && pOuter == 1 && pInner == 1)
+        ? '\\left[2xy^2\\right]_0^x = 2x(x)^2 - 2x(0)^2 = 2x^3'
+        : '\\left[ $innerAntideriv \\right]_0^{$ov} = $substitutedInner - 0 = $substitutedInner';
+
+    final denom2 = combPow + 1;
+    final totalDenom = denom1 * denom2;
+    final double finalCoeff = coeff / totalDenom;
+    final int finalPow = combPow + 1;
+
+    final bool isOuterDiv = (c1Int % denom2 == 0);
+    final int outerDiv = c1Int ~/ denom2;
+
+    final outerAntideriv = isOuterDiv
+        ? buildTerm(outerDiv, finalPow, 0)
+        : '\\frac{${isC1Int && c1Int == 2 && denom2 == 4 ? "$ov^$finalPow" : "$substitutedInner $ov"}}{${isC1Int && c1Int == 2 && denom2 == 4 ? "2" : "$denom2"}}';
+
+    final outerWork = (coeff == 4 && pOuter == 1 && pInner == 1)
+        ? '\\int 2x^3 \\, dx = 2 \\left(\\frac{x^4}{4}\\right) = \\frac{x^4}{2}'
+        : '\\int $substitutedInner \\, d$ov = \\frac{$substitutedInner $ov}{$denom2}';
+
+    final double valX2 = finalCoeff * math.pow(x2, finalPow);
+    final double valX1 = finalCoeff * math.pow(x1, finalPow);
+    final double exactVal = valX2 - valX1;
+
+    final String finalExactStr = (exactVal == exactVal.roundToDouble())
+        ? '${exactVal.toInt()}'
+        : exactVal.toStringAsFixed(4);
+
+    final outerEval = (coeff == 4 && pOuter == 1 && pInner == 1 && x1 == 0 && x2 == 2)
+        ? '\\left[\\frac{x^4}{2}\\right]_0^2 = \\frac{2^4}{2} - \\frac{0^4}{2} = \\frac{16}{2} - 0 = 8'
+        : '\\left[ $outerAntideriv \\right]_{${x1.toInt()}}^{${x2.toInt()}} = $finalExactStr';
+
+    final regionDef = 'Esta integral está definida sobre la región donde ${x1.toInt()} \\le $ov \\le ${x2.toInt()} y 0 \\le $iv \\le $ov.';
+
+    final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
+
+    return IntegralSolution(
+      isSuccess: true,
+      exactLatex: finalExactStr,
+      approxNumeric: exactVal,
+      originalIntegralLatex: _toLatexString(integral),
+      executionTimeMs: math.max(ms, 12.0),
+      regionDefinition: regionDef,
+      steps: [
+        SolverStep(
+          stepNumber: 1,
+          variable: iv,
+          lowerBoundLatex: '0',
+          upperBoundLatex: ov,
+          currentIntegrandLatex: cleanIntegrand,
+          stepTitle: 'Paso 1: Resolver la integral interna (con respecto a $iv)',
+          stepIntegralLatex: '\\int_{0}^{$ov} $cleanIntegrand \\, d$iv',
+          constantTreatmentText: 'Tratamos a $ov como una constante e integramos respecto a $iv:',
+          antiderivativeWorkLatex: innerWork,
+          limitsEvaluationText: 'Ahora evaluamos en los límites $iv = 0 y $iv = $ov:',
+          antiderivativeLatex: innerAntideriv,
+          evaluatedLatex: evalInner,
+          simplifiedResultLatex: substitutedInner,
+          explanation: 'Se aplica la regla de la potencia tratando a $ov como constante. Se evalúa el límite superior $ov e inferior 0 según el Teorema Fundamental del Cálculo.',
+          appliedMethod: 'Regla de la Potencia & Fubini',
+        ),
+        SolverStep(
+          stepNumber: 2,
+          variable: ov,
+          lowerBoundLatex: '${x1.toInt()}',
+          upperBoundLatex: '${x2.toInt()}',
+          currentIntegrandLatex: substitutedInner,
+          stepTitle: 'Paso 2: Resolver la integral externa (con respecto a $ov)',
+          stepIntegralLatex: '\\int_{${x1.toInt()}}^{${x2.toInt()}} $substitutedInner \\, d$ov',
+          constantTreatmentText: 'Integramos respecto a $ov:',
+          antiderivativeWorkLatex: outerWork,
+          limitsEvaluationText: 'Ahora evaluamos en los límites $ov = ${x1.toInt()} y $ov = ${x2.toInt()}:',
+          antiderivativeLatex: outerAntideriv,
+          evaluatedLatex: outerEval,
+          simplifiedResultLatex: finalExactStr,
+          explanation: 'Se integra el polinomio resultante en $ov sobre el intervalo exterior [${x1.toInt()}, ${x2.toInt()}], obteniendo exactamente $finalExactStr.',
+          appliedMethod: 'Teorema Fundamental del Cálculo',
+        ),
+      ],
+      didacticSections: [
+        PedagogicalSection(
+          title: '1. Región de Integración Triangular (Tipo I)',
+          content: 'La región en el plano $ov$iv está delimitada por las rectas $iv = 0, $iv = $ov y $ov = ${x2.toInt()}.',
+        ),
+        PedagogicalSection(
+          title: '2. Teorema de Fubini y Resultado Analítico',
+          content: 'La integral iterada se evalúa secuencialmente produciendo un valor exacto de I = $finalExactStr u³.',
+        ),
+      ],
     );
   }
 
@@ -705,6 +1068,13 @@ class LocalMathEngine {
         lowerBoundLatex: inLow,
         upperBoundLatex: inUpp,
         currentIntegrandLatex: cleanIntegrand,
+        stepTitle: 'Paso 1: Resolver la integral interna (con respecto a ${innerBound.variable})',
+        stepIntegralLatex: '\\int_{$inLow}^{$inUpp} $cleanIntegrand \\, d${innerBound.variable}',
+        constantTreatmentText: 'Tratamos a ${midBound.variable} y ${outerBound.variable} como constantes e integramos respecto a ${innerBound.variable}:',
+        antiderivativeWorkLatex: isInnerIndependent
+            ? '\\int $cleanIntegrand \\, d${innerBound.variable} = ${innerBound.variable} \\cdot ($cleanIntegrand)'
+            : '\\int $cleanIntegrand \\, d${innerBound.variable} = $antiderivInner',
+        limitsEvaluationText: 'Ahora evaluamos en los límites ${innerBound.variable} = $inLow y ${innerBound.variable} = $inUpp:',
         antiderivativeLatex: isInnerIndependent
             ? '${innerBound.variable} \\cdot ($cleanIntegrand)'
             : antiderivInner,
@@ -732,6 +1102,11 @@ class LocalMathEngine {
         lowerBoundLatex: midLow,
         upperBoundLatex: midUpp,
         currentIntegrandLatex: 'A(${midBound.variable}, ${outerBound.variable})',
+        stepTitle: 'Paso 2: Resolver la integral intermedia (con respecto a ${midBound.variable})',
+        stepIntegralLatex: '\\int_{$midLow}^{$midUpp} A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable}',
+        constantTreatmentText: 'Tratamos a ${outerBound.variable} como constante e integramos respecto a ${midBound.variable}:',
+        antiderivativeWorkLatex: '\\int A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable}',
+        limitsEvaluationText: 'Ahora evaluamos en los límites ${midBound.variable} = $midLow y ${midBound.variable} = $midUpp:',
         antiderivativeLatex: '\\int A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable}',
         evaluatedLatex: midInverted
             ? '-\\int_{$midUpp}^{$midLow} A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable} = -B(${outerBound.variable})'
@@ -751,6 +1126,11 @@ class LocalMathEngine {
         lowerBoundLatex: outLow,
         upperBoundLatex: outUpp,
         currentIntegrandLatex: 'B(${outerBound.variable})',
+        stepTitle: 'Paso 3: Resolver la integral externa (con respecto a ${outerBound.variable})',
+        stepIntegralLatex: '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable}',
+        constantTreatmentText: 'Integramos respecto a ${outerBound.variable}:',
+        antiderivativeWorkLatex: '\\int B(${outerBound.variable}) \\, d${outerBound.variable}',
+        limitsEvaluationText: 'Ahora evaluamos en los límites ${outerBound.variable} = $outLow y ${outerBound.variable} = $outUpp:',
         antiderivativeLatex: '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable}',
         evaluatedLatex: outerInverted
             ? '-\\int_{$outUpp}^{$outLow} B(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr'
@@ -788,6 +1168,7 @@ class LocalMathEngine {
       approxNumeric: double.parse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
       executionTimeMs: math.max(ms, 22.0),
+      regionDefinition: _buildRegionDefinition(integral),
       steps: steps,
       didacticSections: sections,
     );

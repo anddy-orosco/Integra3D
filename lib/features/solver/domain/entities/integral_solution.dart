@@ -11,6 +11,13 @@ class SolverStep {
   final String? appliedMethod;
   final bool isLimitInverted;
 
+  // Campos para la experiencia didáctica premium tipo libro de texto (Foto del usuario):
+  final String? stepTitle;              // ej: "Paso 1: Resolver la integral interna (con respecto a y)"
+  final String? stepIntegralLatex;      // ej: r'\int_{0}^{x} 4xy \, dy'
+  final String? constantTreatmentText;  // ej: "Tratamos a x como una constante e integramos respecto a y:"
+  final String? antiderivativeWorkLatex;// ej: r'\int 4xy \, dy = 4x \left(\frac{y^2}{2}\right) = 2xy^2'
+  final String? limitsEvaluationText;   // ej: "Ahora evaluamos en los límites y = 0 y y = x:"
+
   const SolverStep({
     required this.stepNumber,
     required this.variable,
@@ -23,6 +30,11 @@ class SolverStep {
     required this.explanation,
     this.appliedMethod,
     this.isLimitInverted = false,
+    this.stepTitle,
+    this.stepIntegralLatex,
+    this.constantTreatmentText,
+    this.antiderivativeWorkLatex,
+    this.limitsEvaluationText,
   });
 
   factory SolverStep.fromJson(Map<String, dynamic> json) {
@@ -38,6 +50,11 @@ class SolverStep {
       explanation: json['explanation'] as String? ?? '',
       appliedMethod: json['applied_method'] as String?,
       isLimitInverted: json['is_limit_inverted'] as bool? ?? false,
+      stepTitle: json['step_title'] as String?,
+      stepIntegralLatex: json['step_integral_latex'] as String?,
+      constantTreatmentText: json['constant_treatment_text'] as String?,
+      antiderivativeWorkLatex: json['antiderivative_work_latex'] as String?,
+      limitsEvaluationText: json['limits_evaluation_text'] as String?,
     );
   }
 }
@@ -68,6 +85,7 @@ class IntegralSolution {
   final String? errorMessage;
   final double executionTimeMs;
   final List<PedagogicalSection>? didacticSections;
+  final String? regionDefinition;
 
   const IntegralSolution({
     required this.isSuccess,
@@ -78,6 +96,7 @@ class IntegralSolution {
     this.errorMessage,
     this.executionTimeMs = 0.0,
     this.didacticSections,
+    this.regionDefinition,
   });
 
   factory IntegralSolution.fromJson(Map<String, dynamic> json) {
@@ -90,6 +109,7 @@ class IntegralSolution {
       originalIntegralLatex: json['original_integral_latex'] as String? ?? '',
       errorMessage: json['error_message'] as String?,
       executionTimeMs: (json['execution_time_ms'] as num?)?.toDouble() ?? 0.0,
+      regionDefinition: json['region_definition'] as String?,
     );
   }
 
@@ -103,6 +123,7 @@ class IntegralSolution {
       errorMessage: errorMessage,
       executionTimeMs: executionTimeMs,
       didacticSections: sections,
+      regionDefinition: regionDefinition,
     );
   }
 }
