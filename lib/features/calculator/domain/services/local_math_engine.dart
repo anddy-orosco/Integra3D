@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import '../entities/multivariable_integral.dart';
+import 'integral_expression_transformer.dart';
 import 'math_expression_evaluator.dart';
 import '../../../solver/domain/entities/integral_solution.dart';
 
@@ -335,98 +336,440 @@ class LocalMathEngine {
       }
     }
 
-    // 2. Si es una función arbitraria, calcular aproximación numérica 2D mediante cuadratura general
-    if (integral.dimension == 2 && integral.bounds.length >= 2) {
-      try {
-        final innerBound = integral.bounds[0];
-        final outerBound = integral.bounds[1];
-
-        final approx = _simpson2DGeneral(
-          integrand: integral.integrand,
-          innerVar: innerBound.variable,
-          innerLower: innerBound.lower,
-          innerUpper: innerBound.upper,
-          outerVar: outerBound.variable,
-          outerLower: outerBound.lower,
-          outerUpper: outerBound.upper,
-          n: 30,
-        );
-        final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
-
-        return IntegralSolution(
-          isSuccess: true,
-          exactLatex: r'\approx ' + approx.toStringAsFixed(4),
-          approxNumeric: double.parse(approx.toStringAsFixed(4)),
-          steps: [
-            SolverStep(
-              stepNumber: 1,
-              variable: innerBound.variable,
-              lowerBoundLatex: innerBound.lower,
-              upperBoundLatex: innerBound.upper,
-              currentIntegrandLatex: integral.integrand,
-              antiderivativeLatex: '\\int ${integral.integrand} \\, d${innerBound.variable}',
-              evaluatedLatex: '\\text{Evaluación en los límites } [${innerBound.lower}, ${innerBound.upper}]',
-              simplifiedResultLatex: 'F(${outerBound.variable}) = \\int_{g_1}^{g_2} f(${innerBound.variable}, ${outerBound.variable}) \\, d${innerBound.variable}',
-              explanation: 'Se evalúa la integral interior iterada con respecto a ${innerBound.variable} respetando sus límites de integración.',
-            ),
-            SolverStep(
-              stepNumber: 2,
-              variable: outerBound.variable,
-              lowerBoundLatex: outerBound.lower,
-              upperBoundLatex: outerBound.upper,
-              currentIntegrandLatex: 'F(${outerBound.variable})',
-              antiderivativeLatex: '\\int F(${outerBound.variable}) \\, d${outerBound.variable}',
-              evaluatedLatex: '\\text{Resultado acumulado } \\approx ${approx.toStringAsFixed(4)}',
-              simplifiedResultLatex: approx.toStringAsFixed(4),
-              explanation: 'Integración final sobre el intervalo exterior [${outerBound.lower}, ${outerBound.upper}].',
-            ),
-          ],
-          originalIntegralLatex: _toLatexString(integral),
-          executionTimeMs: math.max(ms, 18.0),
-          didacticSections: [
-            const PedagogicalSection(
-              title: '1. Integración Iterada Autónoma (Motor Local)',
-              content: 'La integral fue resuelta localmente mediante integración iterada compuesta con soporte completo para límites variables y constantes.',
-            ),
-          ],
-        );
-      } catch (e) {
-        return IntegralSolution(
-          isSuccess: false,
-          exactLatex: '',
-          originalIntegralLatex: _toLatexString(integral),
-          errorMessage: 'Error en cálculo local: $e',
-        );
+    // 2. Solución didáctica y numérica autónoma para integrales de cualquier dimensión (1D, 2D, 3D)
+    try {
+      if (integral.dimension == 1 && integral.bounds.isNotEmpty) {
+        return _solve1D(integral, startTime);
+      } else if (integral.dimension == 2 && integral.bounds.length >= 2) {
+        return _solve2D(integral, startTime);
+      } else if (integral.dimension == 3 && integral.bounds.length >= 3) {
+        return _solve3D(integral, startTime);
+      } else {
+        // Dimensión por defecto según cantidad de límites
+        if (integral.bounds.length >= 3) {
+          return _solve3D(integral, startTime);
+        } else if (integral.bounds.length == 2) {
+          return _solve2D(integral, startTime);
+        } else if (integral.bounds.isNotEmpty) {
+          return _solve1D(integral, startTime);
+        }
       }
+    } catch (e) {
+      return _buildDivergentSolution(
+        integral,
+        startTime,
+        'Error matemático al procesar la integral: $e\n'
+        'Verifica que la función sea continua en el dominio y no contenga divisiones entre cero.',
+      );
     }
 
-    // 3. Fallback genérico para 3D
+    return _buildDivergentSolution(
+      integral,
+      startTime,
+      'No se pudo determinar un recinto válido para las cotas de integración especificadas.',
+    );
+  }
+
+  // =========================================================================
+  // SOLUCIONADORES DIDÁCTICOS POR DIMENSIÓN (1D, 2D, 3D)
+  // =========================================================================
+
+  static IntegralSolution _solve1D(MultivariableIntegral integral, DateTime startTime) {
+    final bound = integral.bounds[0];
+    final approx = _simpson1DGeneral(
+      integrand: integral.integrand,
+      variable: bound.variable,
+      lower: bound.lower,
+      upper: bound.upper,
+    );
+
+    final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
+
+    if (approx.isNaN || approx.isInfinite) {
+      return _buildDivergentSolution(
+        integral,
+        startTime,
+        'La integral unidimensional diverge o presenta una discontinuidad infinita en el intervalo [${bound.lower}, ${bound.upper}].',
+      );
+    }
+
+    final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
+    final cleanLower = IntegralExpressionTransformer.toDisplayLatex(bound.lower);
+    final cleanUpper = IntegralExpressionTransformer.toDisplayLatex(bound.upper);
+    final approxStr = approx.toStringAsFixed(4);
+
     return IntegralSolution(
       isSuccess: true,
-      exactLatex: r'\frac{1}{6}',
-      approxNumeric: 0.1667,
+      exactLatex: r'\approx ' + approxStr,
+      approxNumeric: double.parse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
-      executionTimeMs: 15.0,
+      executionTimeMs: math.max(ms, 14.0),
       steps: [
         SolverStep(
           stepNumber: 1,
-          variable: 'z',
-          lowerBoundLatex: '0',
-          upperBoundLatex: '1 - x - y',
-          currentIntegrandLatex: '1',
-          antiderivativeLatex: 'z',
-          evaluatedLatex: '1 - x - y',
-          simplifiedResultLatex: '1 - x - y',
-          explanation: 'Evaluación local de la capa interior.',
+          variable: bound.variable,
+          lowerBoundLatex: cleanLower,
+          upperBoundLatex: cleanUpper,
+          currentIntegrandLatex: cleanIntegrand,
+          antiderivativeLatex: '\\int ($cleanIntegrand) \\, d${bound.variable}',
+          evaluatedLatex: '\\left[ F(${bound.variable}) \\right]_{$cleanLower}^{$cleanUpper} = F($cleanUpper) - F($cleanLower) \\approx $approxStr',
+          simplifiedResultLatex: approxStr,
+          explanation: 'Se aplica el Teorema Fundamental del Cálculo integrando la función respecto a d${bound.variable} y evaluando la diferencia entre el límite superior e inferior.',
         ),
       ],
       didacticSections: [
         const PedagogicalSection(
-          title: 'Modo Autónomo Local Activo',
-          content: 'Cálculo resuelto con el motor integrado de Integra3D.',
+          title: '1. Teorema Fundamental del Cálculo',
+          content: 'Si f es continua en [a, b] y F es una antiderivada de f, entonces ∫_a^b f(x) dx = F(b) - F(a).',
+        ),
+        PedagogicalSection(
+          title: '2. Interpretación Geométrica',
+          content: 'El valor $approxStr representa el área neta signada bajo la curva f(${bound.variable}) en el intervalo [$cleanLower, $cleanUpper].',
         ),
       ],
     );
+  }
+
+  static IntegralSolution _solve2D(MultivariableIntegral integral, DateTime startTime) {
+    final innerBound = integral.bounds[0];
+    final outerBound = integral.bounds[1];
+
+    final approx = _simpson2DGeneral(
+      integrand: integral.integrand,
+      innerVar: innerBound.variable,
+      innerLower: innerBound.lower,
+      innerUpper: innerBound.upper,
+      outerVar: outerBound.variable,
+      outerLower: outerBound.lower,
+      outerUpper: outerBound.upper,
+      n: 36,
+    );
+
+    final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
+
+    if (approx.isNaN || approx.isInfinite) {
+      return _buildDivergentSolution(
+        integral,
+        startTime,
+        'La integral doble diverge o contiene singularidades infinitas (como división por cero o asíntotas verticales) dentro de la región planar de integración.',
+      );
+    }
+
+    final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
+    final inLow = IntegralExpressionTransformer.toDisplayLatex(innerBound.lower);
+    final inUpp = IntegralExpressionTransformer.toDisplayLatex(innerBound.upper);
+    final outLow = IntegralExpressionTransformer.toDisplayLatex(outerBound.lower);
+    final outUpp = IntegralExpressionTransformer.toDisplayLatex(outerBound.upper);
+    final approxStr = approx.toStringAsFixed(4);
+
+    return IntegralSolution(
+      isSuccess: true,
+      exactLatex: r'\approx ' + approxStr,
+      approxNumeric: double.parse(approxStr),
+      originalIntegralLatex: _toLatexString(integral),
+      executionTimeMs: math.max(ms, 18.0),
+      steps: [
+        SolverStep(
+          stepNumber: 1,
+          variable: innerBound.variable,
+          lowerBoundLatex: inLow,
+          upperBoundLatex: inUpp,
+          currentIntegrandLatex: cleanIntegrand,
+          antiderivativeLatex: '\\int ($cleanIntegrand) \\, d${innerBound.variable}',
+          evaluatedLatex: '\\left[ F(${innerBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp} = G(${outerBound.variable})',
+          simplifiedResultLatex: 'G(${outerBound.variable}) = \\int_{$inLow}^{$inUpp} ($cleanIntegrand) \\, d${innerBound.variable}',
+          explanation: 'Se realiza la primera integración parcial respecto a la variable interior d${innerBound.variable}, tratando a ${outerBound.variable} como parámetro constante.',
+        ),
+        SolverStep(
+          stepNumber: 2,
+          variable: outerBound.variable,
+          lowerBoundLatex: outLow,
+          upperBoundLatex: outUpp,
+          currentIntegrandLatex: 'G(${outerBound.variable})',
+          antiderivativeLatex: '\\int G(${outerBound.variable}) \\, d${outerBound.variable}',
+          evaluatedLatex: '\\int_{$outLow}^{$outUpp} G(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr',
+          simplifiedResultLatex: approxStr,
+          explanation: 'Se integra la función resultante de área G(${outerBound.variable}) sobre el intervalo exterior [$outLow, $outUpp], acumulando el volumen total.',
+        ),
+      ],
+      didacticSections: [
+        const PedagogicalSection(
+          title: '1. Teorema de Fubini en el Plano (2D)',
+          content: 'Permite descomponer la integral doble sobre una región tipo I o tipo II en dos integrales iteradas simples unidimensionales.',
+        ),
+        PedagogicalSection(
+          title: '2. Interpretación del Volumen Neto',
+          content: 'El valor obtenido (≈ $approxStr u³) corresponde al volumen acotado entre la superficie z = f(x, y) y el plano coordenado.',
+        ),
+      ],
+    );
+  }
+
+  static IntegralSolution _solve3D(MultivariableIntegral integral, DateTime startTime) {
+    final innerBound = integral.bounds[0]; // ej: z
+    final midBound = integral.bounds[1];   // ej: y
+    final outerBound = integral.bounds[2]; // ej: x
+
+    final approx = _simpson3DGeneral(
+      integrand: integral.integrand,
+      innerVar: innerBound.variable,
+      innerLower: innerBound.lower,
+      innerUpper: innerBound.upper,
+      midVar: midBound.variable,
+      midLower: midBound.lower,
+      midUpper: midBound.upper,
+      outerVar: outerBound.variable,
+      outerLower: outerBound.lower,
+      outerUpper: outerBound.upper,
+      n: 22,
+    );
+
+    final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
+
+    if (approx.isNaN || approx.isInfinite) {
+      return _buildDivergentSolution(
+        integral,
+        startTime,
+        'La integral triple diverge o el integrando presenta asíntotas dentro del sólido tridimensional de integración.',
+      );
+    }
+
+    final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
+    final inLow = IntegralExpressionTransformer.toDisplayLatex(innerBound.lower);
+    final inUpp = IntegralExpressionTransformer.toDisplayLatex(innerBound.upper);
+    final midLow = IntegralExpressionTransformer.toDisplayLatex(midBound.lower);
+    final midUpp = IntegralExpressionTransformer.toDisplayLatex(midBound.upper);
+    final outLow = IntegralExpressionTransformer.toDisplayLatex(outerBound.lower);
+    final outUpp = IntegralExpressionTransformer.toDisplayLatex(outerBound.upper);
+    final approxStr = approx.toStringAsFixed(4);
+
+    final bool isInnerIndependent = !integral.integrand.contains(innerBound.variable);
+
+    return IntegralSolution(
+      isSuccess: true,
+      exactLatex: r'\approx ' + approxStr,
+      approxNumeric: double.parse(approxStr),
+      originalIntegralLatex: _toLatexString(integral),
+      executionTimeMs: math.max(ms, 22.0),
+      steps: [
+        SolverStep(
+          stepNumber: 1,
+          variable: innerBound.variable,
+          lowerBoundLatex: inLow,
+          upperBoundLatex: inUpp,
+          currentIntegrandLatex: cleanIntegrand,
+          antiderivativeLatex: isInnerIndependent
+              ? '${innerBound.variable} \\cdot ($cleanIntegrand)'
+              : '\\int ($cleanIntegrand) \\, d${innerBound.variable}',
+          evaluatedLatex: isInnerIndependent
+              ? '\\left[ ${innerBound.variable} \\right]_{$inLow}^{$inUpp} \\cdot ($cleanIntegrand) = ($inUpp - $inLow)($cleanIntegrand)'
+              : '\\left[ F(${innerBound.variable}, ${midBound.variable}, ${outerBound.variable}) \\right]_{$inLow}^{$inUpp}',
+          simplifiedResultLatex: isInnerIndependent
+              ? '($inUpp - $inLow)($cleanIntegrand)'
+              : 'A(${midBound.variable}, ${outerBound.variable})',
+          explanation: isInnerIndependent
+              ? 'Dado que el integrando no contiene la variable interior ${innerBound.variable}, se factoriza como constante respecto a d${innerBound.variable}. La antiderivada directa es ${innerBound.variable}.'
+              : 'Se integra la primera capa interior con respecto a d${innerBound.variable} evaluando en los límites de superficie [$inLow, $inUpp].',
+        ),
+        SolverStep(
+          stepNumber: 2,
+          variable: midBound.variable,
+          lowerBoundLatex: midLow,
+          upperBoundLatex: midUpp,
+          currentIntegrandLatex: 'A(${midBound.variable}, ${outerBound.variable})',
+          antiderivativeLatex: '\\int A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable}',
+          evaluatedLatex: '\\int_{$midLow}^{$midUpp} A(${midBound.variable}, ${outerBound.variable}) \\, d${midBound.variable} = B(${outerBound.variable})',
+          simplifiedResultLatex: 'B(${outerBound.variable})',
+          explanation: 'Se integra la capa intermedia respecto a d${midBound.variable}, acumulando las secciones transversales proyectadas sobre el plano de las variables exteriores.',
+        ),
+        SolverStep(
+          stepNumber: 3,
+          variable: outerBound.variable,
+          lowerBoundLatex: outLow,
+          upperBoundLatex: outUpp,
+          currentIntegrandLatex: 'B(${outerBound.variable})',
+          antiderivativeLatex: '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable}',
+          evaluatedLatex: '\\int_{$outLow}^{$outUpp} B(${outerBound.variable}) \\, d${outerBound.variable} \\approx $approxStr',
+          simplifiedResultLatex: approxStr,
+          explanation: 'Se concluye la evaluación exterior unidimensional sobre el intervalo acotado [$outLow, $outUpp], obteniendo el volumen ponderado total.',
+        ),
+      ],
+      didacticSections: [
+        const PedagogicalSection(
+          title: '1. Teorema de Fubini en ℝ³ (Integrales Triples)',
+          content: 'Establece que bajo condiciones de continuidad, la integral triple de volumen dV = dz dy dx se puede calcular mediante tres integrales simples iteradas secuenciales.',
+        ),
+        PedagogicalSection(
+          title: '2. Interpretación Geométrica y Masa/Volumen Ponderado',
+          content: 'El resultado analítico ≈ $approxStr u³ representa el volumen total del sólido acotado entre las superficies límites, ponderado por la función de densidad f(x, y, z).',
+        ),
+      ],
+    );
+  }
+
+  static IntegralSolution _buildDivergentSolution(
+    MultivariableIntegral integral,
+    DateTime startTime,
+    String reason,
+  ) {
+    final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
+    return IntegralSolution(
+      isSuccess: false,
+      exactLatex: r'\text{No Converge / Sin Solución Real}',
+      approxNumeric: null,
+      originalIntegralLatex: _toLatexString(integral),
+      executionTimeMs: math.max(ms, 12.0),
+      errorMessage: reason,
+      didacticSections: [
+        const PedagogicalSection(
+          title: 'Diagnóstico de No Convergencia (Riemann & Lebesgue)',
+          content: 'Para que una integral definida exista en el sentido de Riemann, la función debe estar acotada en el recinto de integración. Si existen asíntotas verticales (división por cero) o el dominio es abierto/complejo, la integral diverge.',
+        ),
+      ],
+    );
+  }
+
+  /// Cuadratura 1D compuesta de Simpson
+  static double _simpson1DGeneral({
+    required String integrand,
+    required String variable,
+    required String lower,
+    required String upper,
+    int n = 80,
+  }) {
+    if (n % 2 != 0) n++;
+    final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
+    final a = MathExpressionEvaluator.evaluate(lower);
+    final b = MathExpressionEvaluator.evaluate(upper);
+
+    if (a.isNaN || b.isNaN || a == b) return 0.0;
+
+    final h = (b - a) / n;
+    double total = 0.0;
+
+    for (int i = 0; i <= n; i++) {
+      final val = a + i * h;
+      final w = (i == 0 || i == n) ? 1.0 : ((i % 2 == 1) ? 4.0 : 2.0);
+
+      final fVal = MathExpressionEvaluator.evaluate(
+        normalized,
+        x: variable == 'x' ? val : 0.0,
+        y: variable == 'y' ? val : 0.0,
+        z: variable == 'z' ? val : 0.0,
+      );
+
+      if (fVal.isNaN || fVal.isInfinite) return double.nan;
+      total += w * fVal;
+    }
+
+    return total * (h / 3.0);
+  }
+
+  /// Cuadratura 3D compuesta de Simpson iterada
+  static double _simpson3DGeneral({
+    required String integrand,
+    required String innerVar,
+    required String innerLower,
+    required String innerUpper,
+    required String midVar,
+    required String midLower,
+    required String midUpper,
+    required String outerVar,
+    required String outerLower,
+    required String outerUpper,
+    int n = 22,
+  }) {
+    if (n % 2 != 0) n++;
+    final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
+    final outMin = MathExpressionEvaluator.evaluate(outerLower);
+    final outMax = MathExpressionEvaluator.evaluate(outerUpper);
+
+    if (outMin.isNaN || outMax.isNaN || outMin == outMax) return 0.0;
+
+    final hOut = (outMax - outMin) / n;
+    double outTotal = 0.0;
+
+    for (int k = 0; k <= n; k++) {
+      final outVal = outMin + k * hOut;
+      final wOut = (k == 0 || k == n) ? 1.0 : ((k % 2 == 1) ? 4.0 : 2.0);
+
+      final mMin = MathExpressionEvaluator.evaluate(
+        midLower,
+        x: outerVar == 'x' ? outVal : 0.0,
+        y: outerVar == 'y' ? outVal : 0.0,
+        z: outerVar == 'z' ? outVal : 0.0,
+      );
+      final mMax = MathExpressionEvaluator.evaluate(
+        midUpper,
+        x: outerVar == 'x' ? outVal : 0.0,
+        y: outerVar == 'y' ? outVal : 0.0,
+        z: outerVar == 'z' ? outVal : 0.0,
+      );
+
+      if (mMin.isNaN || mMax.isNaN || mMax <= mMin) continue;
+
+      final hMid = (mMax - mMin) / n;
+      double midTotal = 0.0;
+
+      for (int j = 0; j <= n; j++) {
+        final midVal = mMin + j * hMid;
+        final wMid = (j == 0 || j == n) ? 1.0 : ((j % 2 == 1) ? 4.0 : 2.0);
+
+        double xVal = 0.0, yVal = 0.0, zVal = 0.0;
+        if (outerVar == 'x') xVal = outVal;
+        if (outerVar == 'y') yVal = outVal;
+        if (outerVar == 'z') zVal = outVal;
+
+        if (midVar == 'x') xVal = midVal;
+        if (midVar == 'y') yVal = midVal;
+        if (midVar == 'z') zVal = midVal;
+
+        final inMin = MathExpressionEvaluator.evaluate(
+          innerLower,
+          x: xVal,
+          y: yVal,
+          z: zVal,
+        );
+        final inMax = MathExpressionEvaluator.evaluate(
+          innerUpper,
+          x: xVal,
+          y: yVal,
+          z: zVal,
+        );
+
+        if (inMin.isNaN || inMax.isNaN || inMax <= inMin) continue;
+
+        final hIn = (inMax - inMin) / n;
+        double inTotal = 0.0;
+
+        for (int i = 0; i <= n; i++) {
+          final inVal = inMin + i * hIn;
+          final wIn = (i == 0 || i == n) ? 1.0 : ((i % 2 == 1) ? 4.0 : 2.0);
+
+          if (innerVar == 'x') xVal = inVal;
+          if (innerVar == 'y') yVal = inVal;
+          if (innerVar == 'z') zVal = inVal;
+
+          final fVal = MathExpressionEvaluator.evaluate(
+            normalized,
+            x: xVal,
+            y: yVal,
+            z: zVal,
+          );
+
+          if (fVal.isNaN || fVal.isInfinite) return double.nan;
+          inTotal += wIn * fVal;
+        }
+
+        final inIntegral = inTotal * (hIn / 3.0);
+        midTotal += wMid * inIntegral;
+      }
+
+      final midIntegral = midTotal * (hMid / 3.0);
+      outTotal += wOut * midIntegral;
+    }
+
+    return outTotal * (hOut / 3.0);
   }
 
   /// Genera la geometría 3D nativa (vértices y caras) para el renderizador Flutter
@@ -566,6 +909,7 @@ class LocalMathEngine {
         final yVal = (innerVar == 'y') ? inVal : outVal;
 
         final fVal = MathExpressionEvaluator.evaluate(integrand, x: xVal, y: yVal);
+        if (fVal.isNaN || fVal.isInfinite) return double.nan;
         innerTotal += wx * fVal;
       }
 
@@ -583,9 +927,12 @@ class LocalMathEngine {
   static String _toLatexString(MultivariableIntegral integral) {
     final buffer = StringBuffer();
     for (final b in integral.bounds.reversed) {
-      buffer.write(r'\int_{' + b.lower + r'}^{' + b.upper + r'} ');
+      final low = IntegralExpressionTransformer.toDisplayLatex(b.lower);
+      final upp = IntegralExpressionTransformer.toDisplayLatex(b.upper);
+      buffer.write(r'\int_{' + (low.isEmpty ? '0' : low) + r'}^{' + (upp.isEmpty ? '1' : upp) + r'} ');
     }
-    buffer.write(integral.integrand);
+    final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
+    buffer.write(cleanIntegrand.isEmpty ? '1' : cleanIntegrand);
     for (final b in integral.bounds) {
       buffer.write(r'\,d' + b.variable);
     }

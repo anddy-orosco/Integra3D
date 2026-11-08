@@ -45,6 +45,17 @@ void main() {
       expect(display, isNot(contains('*')));
     });
 
+    test('toDisplayLatex transforms user uploaded integral without exp or asterisks', () {
+      final input = '1 * e^y exp(x) * sin(tan(y))^2';
+      final display = IntegralExpressionTransformer.toDisplayLatex(input);
+
+      expect(display, isNot(contains('exp')));
+      expect(display, isNot(contains('*')));
+      expect(display, contains('e^{y}'));
+      expect(display, contains('e^{x}'));
+      expect(display, contains(r'\sin^{2}(\tan(y))'));
+    });
+
     test('formatMathInline prepares math typography with unicode glyphs for interactive cursor', () {
       final input = 'xln(x)*exp(-(x^2 + y^2))sqrt(4 - x^2)';
       final inline = IntegralExpressionTransformer.formatMathInline(input);
@@ -76,6 +87,52 @@ void main() {
       expect(solution.steps.length, 2);
       expect(solution.steps[0].variable, 'x');
       expect(solution.steps[1].variable, 'y');
+    });
+
+    test('solves user custom 3D integral accurately instead of returning default 1/6', () {
+      const integral = MultivariableIntegral(
+        integrand: '1 * e^y exp(x) * sin(tan(y))^2',
+        bounds: [
+          IntegrationBound(variable: 'z', lower: '0', upper: '1 - x - y'),
+          IntegrationBound(variable: 'y', lower: '0', upper: '1 - x'),
+          IntegrationBound(variable: 'x', lower: '0', upper: '1'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(integral);
+
+      expect(solution.isSuccess, isTrue);
+      // Value must be approximately 0.0358, NOT the hardcoded 0.1667 (1/6)
+      expect(solution.approxNumeric, isNotNull);
+      expect(solution.approxNumeric!, closeTo(0.0358, 0.005));
+      expect(solution.approxNumeric!, isNot(closeTo(0.1667, 0.01)));
+
+      // Step-by-step resolution must have 3 steps for z, y, x
+      expect(solution.steps.length, 3);
+      expect(solution.steps[0].variable, 'z');
+      expect(solution.steps[1].variable, 'y');
+      expect(solution.steps[2].variable, 'x');
+
+      // Original integral LaTeX must not contain raw programming tokens
+      expect(solution.originalIntegralLatex, isNot(contains('exp')));
+      expect(solution.originalIntegralLatex, isNot(contains('*')));
+      expect(solution.originalIntegralLatex, contains('e^{y}'));
+    });
+
+    test('detects singular or divergent integrals and provides didactic diagnosis', () {
+      const divergentIntegral = MultivariableIntegral(
+        integrand: '1 / x',
+        bounds: [
+          IntegrationBound(variable: 'x', lower: '-1', upper: '1'),
+        ],
+        coordinateSystem: CoordinateSystemType.cartesian,
+      );
+
+      final solution = LocalMathEngine.solveLocal(divergentIntegral);
+
+      expect(solution.isSuccess, isFalse);
+      expect(solution.errorMessage, contains('diverge'));
     });
   });
 }

@@ -291,14 +291,53 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 latex: solution.originalIntegralLatex,
               ),
 
+              // Alerta didáctica si la integral no tiene solución real o es divergente
+              if (!solution.isSuccess && solution.errorMessage != null) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.coralFlame.withAlpha(25),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.coralFlame.withAlpha(140), width: 1.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: AppColors.coralFlame, size: 22),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Diagnóstico Didáctico: No Integrable o Divergente',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.coralFlame,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        solution.errorMessage!,
+                        style: const TextStyle(fontSize: 12, color: AppColors.pureWhite, height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               // Exact result
               LatexCard(
-                title: 'Resultado Simbólico Exacto',
+                title: solution.isSuccess ? 'Resultado Simbólico / Numérico' : 'Estado de Convergencia',
                 subtitle: solution.approxNumeric != null
                     ? 'Aproximación Numérica: ≈ ${solution.approxNumeric}'
                     : null,
                 latex: solution.exactLatex,
-                isHighlight: true,
+                isHighlight: solution.isSuccess,
               ),
 
               // Execution & Engine pill

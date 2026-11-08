@@ -71,6 +71,12 @@ class IntegralExpressionTransformer {
       (m) => ')*${m.group(1)}',
     );
 
+    // Exponente o variable seguido de función: ej. e^y exp(x) -> e^y * exp(x), x sin(y) -> x * sin(y)
+    expr = expr.replaceAllMapped(
+      RegExp(r'([0-9a-zA-Z\^\)])\s+(exp|sin|cos|tan|sec|csc|cot|ln|log|sqrt|cbrt|abs)'),
+      (m) => '${m.group(1)} * ${m.group(2)}',
+    );
+
     // 4. Formatear operadores
     // Normalizar suma y resta binarias (sin alterar signo unario negativo como -2)
     expr = expr.replaceAllMapped(
@@ -247,6 +253,11 @@ class IntegralExpressionTransformer {
 
     String expr = raw.trim();
 
+    // Limpiar '1 *' si antecede a una variable o función (ej: 1 * e^y -> e^y), salvo si la expresión es solo '1'
+    if (expr != '1') {
+      expr = expr.replaceAll(RegExp(r'(^|[\+\-\(\s])1\s*\*\s*'), r'$1');
+    }
+
     // 0. Separar si una variable o número está pegado a una función (ej: xln(x) -> x ln(x), 3sqrt -> 3 sqrt)
     expr = expr.replaceAllMapped(
       RegExp(r'([0-9a-zA-Z\)])(sin|cos|tan|sec|csc|cot|ln|log|exp|sqrt|cbrt|abs)'),
@@ -277,9 +288,13 @@ class IntegralExpressionTransformer {
     );
     expr = expr.replaceAll('*', ' ');
 
-    // 3. Potencias: x^2 -> x^{2}, ^(arg) -> ^{arg}
+    // 3. Potencias: x^2 -> x^{2}, ^(arg) -> ^{arg}, e^y -> e^{y}
     expr = expr.replaceAllMapped(
       RegExp(r'\^(\d+)'),
+      (m) => '^{${m.group(1)}}',
+    );
+    expr = expr.replaceAllMapped(
+      RegExp(r'\^([a-zA-Z])'),
       (m) => '^{${m.group(1)}}',
     );
     expr = expr.replaceAllMapped(
@@ -301,6 +316,11 @@ class IntegralExpressionTransformer {
       );
     }
 
+    // 4b. Reordenar potencias trigonométricas a notación clásica: \sin(arg)^{2} -> \sin^{2}(arg)
+    for (final f in ['arcsin', 'arccos', 'arctan', 'asin', 'acos', 'atan', 'sin', 'cos', 'tan', 'sec', 'csc', 'cot', 'ln', 'log']) {
+      expr = _replaceTrigPowersWithLatex(expr, f);
+    }
+
     // 5. Símbolos griegos y especiales
     expr = expr
         .replaceAll(RegExp(r'\bpi\b'), r'\pi ')
@@ -308,6 +328,9 @@ class IntegralExpressionTransformer {
         .replaceAll(RegExp(r'\bphi\b'), r'\phi ')
         .replaceAll(RegExp(r'\brho\b'), r'\rho ')
         .replaceAll(RegExp(r'\boo\b'), r'\infty ');
+
+    // 6. Colapsar espacios múltiples
+    expr = expr.replaceAll(RegExp(r'\s+'), ' ');
 
     return expr.trim();
   }
@@ -345,12 +368,51 @@ class IntegralExpressionTransformer {
     return str;
   }
 
+  /// Reemplaza potencias aplicadas a funciones trigonométricas (ej: \sin(tan(y))^{2} -> \sin^{2}(\tan(y)))
+  static String _replaceTrigPowersWithLatex(String input, String funcName) {
+    String str = input;
+    final prefix = '\\$funcName(';
+    int idx = str.indexOf(prefix);
+    while (idx != -1) {
+      int startArg = idx + prefix.length;
+      int depth = 1;
+      int endArg = startArg;
+      while (endArg < str.length && depth > 0) {
+        if (str[endArg] == '(') depth++;
+        if (str[endArg] == ')') depth--;
+        if (depth > 0) endArg++;
+      }
+      if (depth == 0) {
+        final after = str.substring(endArg + 1);
+        final powMatch = RegExp(r'^\s*\^(\{?\w+\}?)').firstMatch(after);
+        if (powMatch != null) {
+          final power = powMatch.group(1)!;
+          final cleanPower = power.startsWith('{') && power.endsWith('}')
+              ? power.substring(1, power.length - 1)
+              : power;
+          final arg = str.substring(startArg, endArg);
+          final replacement = '\\$funcName^{$cleanPower}($arg)';
+          str = str.replaceRange(idx, endArg + 1 + powMatch.end, replacement);
+          idx = str.indexOf(prefix, idx + replacement.length);
+          continue;
+        }
+      }
+      idx = str.indexOf(prefix, idx + prefix.length);
+    }
+    return str;
+  }
+
   /// Formatea una expresión para el cursor interactivo en tiempo real.
   /// Reemplaza texto informático crudo (*, sqrt, exp, ^2) por tipografía matemática limpia (√, ², e^, etc.)
   static String formatMathInline(String raw) {
     if (raw.isEmpty) return '';
 
     String res = raw;
+
+    // Limpiar 1 * si antecede a una variable o función
+    if (res != '1') {
+      res = res.replaceAll(RegExp(r'(^|[\+\-\(\s])1\s*\*\s*'), r'$1');
+    }
 
     // 0. Espaciar identificadores pegados a funciones (xln -> x ln)
     res = res.replaceAllMapped(

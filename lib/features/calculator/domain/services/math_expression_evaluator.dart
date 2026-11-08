@@ -23,7 +23,7 @@ class MathExpressionEvaluator {
       final evaluator = MathExpressionEvaluator(expression);
       return evaluator._parse(x: x, y: y, z: z);
     } catch (_) {
-      return 0.0;
+      return double.nan;
     }
   }
 
@@ -80,7 +80,7 @@ class MathExpressionEvaluator {
       } else if (_eat(47)) {
         // '/'
         final divisor = _parseFactor(x: x, y: y, z: z);
-        v = (divisor != 0.0) ? v / divisor : 0.0;
+        v = (divisor != 0.0) ? v / divisor : (v == 0.0 ? double.nan : (v > 0 ? double.infinity : -double.infinity));
       } else {
         return v;
       }
@@ -95,7 +95,7 @@ class MathExpressionEvaluator {
       // '^'
       final exponent = _parseFactor(x: x, y: y, z: z);
       if (v < 0 && exponent != exponent.roundToDouble()) {
-        v = 0.0; // Evitar NaN en raíces pares de negativos
+        v = double.nan; // Indefinido en reales para potencias fraccionarias de negativos
       } else {
         v = math.pow(v, exponent).toDouble();
       }
@@ -151,7 +151,7 @@ class MathExpressionEvaluator {
 
         switch (name) {
           case 'sqrt':
-            return arg >= 0 ? math.sqrt(arg) : 0.0;
+            return arg >= 0 ? math.sqrt(arg) : double.nan;
           case 'sin':
             return math.sin(arg);
           case 'cos':
@@ -162,7 +162,7 @@ class MathExpressionEvaluator {
             return math.exp(arg);
           case 'ln':
           case 'log':
-            return arg > 0 ? math.log(arg) : 0.0;
+            return arg > 0 ? math.log(arg) : double.nan;
           case 'abs':
             return arg.abs();
           default:
