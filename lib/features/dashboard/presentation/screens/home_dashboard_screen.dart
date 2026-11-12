@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/math_colors.dart';
 import '../../../calculator/presentation/widgets/mathway_formula_editor.dart';
 import '../../../ocr/presentation/widgets/ocr_scanner_sheet.dart';
 import '../../../solver/domain/entities/integral_solution.dart';
 import '../../../solver/presentation/providers/solver_provider.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
+import '../../../../core/utils/latex_sanitizer.dart';
 import '../../../solver/presentation/widgets/latex_card.dart';
 import '../../../visualization_3d/presentation/widgets/native_3d_viewport.dart';
+import '../widgets/calculus_formulary_tab.dart';
 
 class HomeDashboardScreen extends ConsumerStatefulWidget {
   const HomeDashboardScreen({super.key});
@@ -49,6 +53,144 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     );
   }
 
+  Future<void> _openAiConfigDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentKey = prefs.getString('integra3d_gemini_api_key') ??
+        prefs.getString('integra3d_byok_gemini_key') ??
+        prefs.getString('integra3d_openrouter_key') ??
+        prefs.getString('integra3d_groq_key') ??
+        '';
+
+    if (!mounted) return;
+
+    final controller = TextEditingController(text: currentKey);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: AppColors.slateDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: const [
+              Icon(Icons.auto_awesome, color: AppColors.cyberEmerald, size: 22),
+              SizedBox(width: 8),
+              Text(
+                'Motor de IA Didáctica',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Integra3D funciona al 100% de forma autónoma y GRATUITA sin necesidad de ingresar ninguna clave. Si deseas conectar opcionalmente tu propia clave de Google Gemini, OpenRouter o Groq para enriquecer las explicaciones con modelos en la nube, puedes ingresarla a continuación.',
+                  style: TextStyle(fontSize: 12, color: AppColors.pureWhite, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.deepVoid,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text('Proveedores recomendados 100% GRATIS:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.electricCyan)),
+                      SizedBox(height: 4),
+                      Text('• Google AI Studio (Gemini 2.0/1.5 Flash): aistudio.google.com', style: TextStyle(fontSize: 10, color: AppColors.mutedGray)),
+                      Text('• OpenRouter (Gemini, LLaMA, DeepSeek gratis): openrouter.ai', style: TextStyle(fontSize: 10, color: AppColors.mutedGray)),
+                      Text('• Groq Cloud (LLaMA 3.3 70B ultra-rápido): console.groq.com', style: TextStyle(fontSize: 10, color: AppColors.mutedGray)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  style: const TextStyle(fontSize: 12, color: AppColors.pureWhite, fontFamily: 'monospace'),
+                  decoration: InputDecoration(
+                    labelText: 'Clave de API (Gemini, OpenRouter o Groq)',
+                    labelStyle: const TextStyle(color: AppColors.mutedGray, fontSize: 11),
+                    hintText: 'AIzaSy... o sk-or-... o gsk_...',
+                    hintStyle: const TextStyle(color: AppColors.mutedGray, fontSize: 11),
+                    filled: true,
+                    fillColor: AppColors.slateElevated,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.clear, size: 16, color: AppColors.mutedGray),
+                      onPressed: () => controller.clear(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            if (currentKey.isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await prefs.remove('integra3d_gemini_api_key');
+                  await prefs.remove('integra3d_byok_gemini_key');
+                  await prefs.remove('integra3d_openrouter_key');
+                  await prefs.remove('integra3d_groq_key');
+                  if (ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                  }
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Clave eliminada. Modo autónomo local activo.')),
+                    );
+                  }
+                },
+                child: const Text('Eliminar', style: TextStyle(color: AppColors.coralFlame)),
+              ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar', style: TextStyle(color: AppColors.mutedGray)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.cyberEmerald,
+                foregroundColor: AppColors.deepVoid,
+              ),
+              onPressed: () async {
+                final key = controller.text.trim();
+                if (key.isNotEmpty) {
+                  await prefs.setString('integra3d_gemini_api_key', key);
+                  await prefs.setString('integra3d_byok_gemini_key', key);
+                  if (key.startsWith('sk-or-')) {
+                    await prefs.setString('integra3d_openrouter_key', key);
+                  } else if (key.startsWith('gsk_')) {
+                    await prefs.setString('integra3d_groq_key', key);
+                  }
+                  if (ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                  }
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Motor de IA configurado exitosamente.')),
+                    );
+                    ref.read(solverProvider.notifier).solve();
+                  }
+                } else {
+                  await prefs.remove('integra3d_gemini_api_key');
+                  await prefs.remove('integra3d_byok_gemini_key');
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                }
+              },
+              child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(solverProvider);
@@ -58,97 +200,158 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     return Scaffold(
       backgroundColor: AppColors.deepVoid,
       appBar: AppBar(
+        titleSpacing: 12,
         title: Row(
           children: [
+            // Logo Icono de la App
             Container(
-              padding: const EdgeInsets.all(7),
+              width: 36,
+              height: 36,
+              padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
-                color: mathColors.primaryAction.withAlpha(35),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: mathColors.primaryAction.withAlpha(90)),
+                color: AppColors.slateDark,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: mathColors.primaryAction.withAlpha(120), width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: mathColors.primaryAction.withAlpha(35),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: Icon(Icons.hub_rounded, color: mathColors.primaryAction, size: 20),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(7),
+                child: Image.asset(
+                  'assets/images/icon.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Icon(Icons.hub_rounded, color: mathColors.primaryAction, size: 20),
+                ),
+              ),
             ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Integra3D',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: mathColors.formulaText,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Integra3D',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: mathColors.formulaText,
+                      letterSpacing: 0.2,
+                    ),
                   ),
-                ),
-                Text(
-                  'Cálculo Multivariable & Math OCR',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: mathColors.metadataText,
+                  const SizedBox(height: 1),
+                  Text(
+                    'Cálculo Multivariable y Graficadora',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: mathColors.metadataText,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
         actions: [
-          // Botón directo para Escanear con Cámara o Foto
-          IconButton(
-            icon: const Icon(Icons.camera_alt_rounded, size: 20, color: AppColors.amberGlow),
-            tooltip: 'Escanear ejercicio con foto (OCR)',
-            onPressed: _openOcrScanner,
-          ),
-
-          // Engine Status Indicator Pill
+          // Insignia Académica Elegante en el Costado Derecho: UPEA • Ingeniería de Sistemas
           Container(
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            margin: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: state.isBackendConnected
-                  ? mathColors.primaryAction.withAlpha(25)
-                  : mathColors.mathWarning.withAlpha(25),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: state.isBackendConnected
-                    ? mathColors.primaryAction.withAlpha(120)
-                    : mathColors.mathWarning.withAlpha(120),
-                width: 1,
+              gradient: const LinearGradient(
+                colors: [
+                  AppColors.slateElevated,
+                  AppColors.slateDark,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.cyberEmerald.withAlpha(140), width: 1.0),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.circle,
-                  size: 7,
-                  color: state.isBackendConnected
-                      ? mathColors.primaryAction
-                      : mathColors.mathWarning,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  state.isBackendConnected ? 'SymPy' : 'Local',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: state.isBackendConnected
-                        ? mathColors.primaryAction
-                        : mathColors.mathWarning,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.cyberEmerald.withAlpha(45),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: AppColors.cyberEmerald, width: 0.8),
                   ),
+                  child: const Text(
+                    'UPEA',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.cyberEmerald,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.terminal_rounded, size: 11, color: AppColors.electricCyan),
+                        SizedBox(width: 3),
+                        Text(
+                          'Ing. de Sistemas',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.pureWhite,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Text(
+                      'Univ. Pública de El Alto',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.mutedGray,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+
+          // Botón de Configuración de IA Didáctica
           IconButton(
-            icon: Icon(Icons.sync_rounded, size: 20, color: mathColors.metadataText),
-            tooltip: 'Sincronizar conexión',
-            onPressed: () => notifier.checkConnectionAndSync(),
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            icon: const Icon(Icons.auto_awesome, size: 18, color: AppColors.cyberEmerald),
+            tooltip: 'Configurar Motor de IA Didáctica',
+            onPressed: _openAiConfigDialog,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
         ],
       ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             // Preset problems bar
@@ -178,7 +381,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 tabs: const [
                   Tab(icon: Icon(Icons.edit_outlined, size: 16), text: 'Editor'),
                   Tab(icon: Icon(Icons.functions_rounded, size: 16), text: 'Solución'),
-                  Tab(icon: Icon(Icons.timeline_rounded, size: 16), text: 'Pasos'),
+                  Tab(icon: Icon(Icons.menu_book_rounded, size: 16), text: 'Formulario'),
                   Tab(icon: Icon(Icons.view_in_ar_rounded, size: 16), text: '3D View'),
                 ],
               ),
@@ -191,7 +394,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 children: [
                   _buildEditorTab(state, notifier, mathColors),
                   _buildSolutionTab(state, mathColors),
-                  _buildStepsTab(state, mathColors),
+                  const CalculusFormularyTab(),
                   _build3DViewportTab(state),
                 ],
               ),
@@ -273,6 +476,23 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     );
   }
 
+  String _formatFinalLatexResult(IntegralSolution solution) {
+    if (!solution.isSuccess) {
+      return r'\text{Integral Divergente / Sin Solución Real}';
+    }
+    final raw = solution.exactLatex.trim();
+    if (raw.startsWith(r'\approx') || raw.startsWith('~')) {
+      return 'I $raw';
+    }
+    if (raw.startsWith('=')) {
+      return 'I $raw';
+    }
+    if (raw.startsWith(r'\text')) {
+      return raw;
+    }
+    return 'I = $raw';
+  }
+
   Widget _buildSolutionTab(SolverState state, MathColors mathColors) {
     return state.solutionState.when(
       data: (solution) {
@@ -280,8 +500,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           return const Center(child: Text('Presiona Calcular en el Editor.'));
         }
 
+        final bottomInset = MediaQuery.of(context).padding.bottom;
+
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
           physics: const BouncingScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -291,6 +513,29 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 title: 'Integral Planteada',
                 latex: solution.originalIntegralLatex,
               ),
+
+              // Definición Didáctica del Dominio / Región R
+              if (solution.regionDefinition != null && solution.regionDefinition!.isNotEmpty) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.deepVoid.withAlpha(160),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: Text(
+                    _formatInlineMath(solution.regionDefinition!),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.pureWhite,
+                      height: 1.45,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
 
               // Alerta didáctica si la integral no tiene solución real o es divergente
               if (!solution.isSuccess && solution.errorMessage != null) ...[
@@ -337,7 +582,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 subtitle: solution.approxNumeric != null
                     ? 'Aproximación Numérica: ≈ ${solution.approxNumeric}'
                     : null,
-                latex: solution.exactLatex,
+                latex: _formatFinalLatexResult(solution),
                 isHighlight: solution.isSuccess,
               ),
 
@@ -368,7 +613,11 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
+
+              // Banner de Estado IA / Motor
+              _buildAiStatusBanner(solution, mathColors),
+              const SizedBox(height: 8),
 
               // Desarrollo Paso a Paso Académico Integrado Directamente en Solución
               if (solution.steps.isNotEmpty) ...[
@@ -389,8 +638,8 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                       ),
-                      icon: const Icon(Icons.fullscreen_rounded, size: 16, color: AppColors.mutedGray),
-                      label: const Text('Ver Pantalla de Pasos', style: TextStyle(fontSize: 11, color: AppColors.mutedGray)),
+                      icon: const Icon(Icons.menu_book_rounded, size: 16, color: AppColors.mutedGray),
+                      label: const Text('Ver Formulario', style: TextStyle(fontSize: 11, color: AppColors.mutedGray)),
                       onPressed: () => _tabController.animateTo(2),
                     ),
                   ],
@@ -431,6 +680,12 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                   ),
                 )),
               ],
+
+              // Formulario y Métodos Empleados en este ejercicio
+              if (solution.formulasAndMethods != null && solution.formulasAndMethods!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildFormulasAndMethodsSection(solution.formulasAndMethods!, mathColors),
+              ],
             ],
           ),
         );
@@ -451,178 +706,196 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     );
   }
 
-  Widget _buildStepsTab(SolverState state, MathColors mathColors) {
-    final solution = state.solutionState.asData?.value;
-    if (solution == null || solution.steps.isEmpty) {
-      return Center(
-        child: Text('No hay pasos calculados aún.', style: TextStyle(color: mathColors.metadataText)),
-      );
-    }
+  Widget _buildAiStatusBanner(IntegralSolution solution, MathColors mathColors) {
+    final status = solution.aiStatus;
+    if (status == null || status.isEmpty) return const SizedBox.shrink();
 
-    final bool hasInversion = solution.steps.any((s) => s.isLimitInverted);
+    final isAi = status.contains('✨');
+    final isWarning = status.contains('⚠️');
+    final color = isAi
+        ? mathColors.secondaryAccent
+        : (isWarning ? AppColors.amberGlow : mathColors.primaryAction);
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      physics: const BouncingScrollPhysics(),
-      children: [
-        // 1. Cabecera Didáctica: Planteamiento Integral I = ...
-        Container(
-          margin: const EdgeInsets.only(bottom: 14),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.slateDark,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.borderSubtle),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                'Planteamiento del Ejercicio:',
+    final icon = isAi
+        ? Icons.auto_awesome_rounded
+        : (isWarning ? Icons.warning_amber_rounded : Icons.bolt_rounded);
+
+    return InkWell(
+      onTap: _openAiConfigDialog,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withAlpha(20),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withAlpha(120), width: 1.0),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                status,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: mathColors.secondaryAccent,
-                  letterSpacing: 0.5,
+                  color: isWarning ? AppColors.amberGlow : AppColors.pureWhite,
+                  height: 1.35,
                 ),
               ),
-              const SizedBox(height: 8),
-              LatexCard(
-                latex: 'I = ${solution.originalIntegralLatex.isEmpty ? "\\int f" : solution.originalIntegralLatex}',
-                isHighlight: true,
-              ),
-              if (solution.regionDefinition != null && solution.regionDefinition!.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.deepVoid.withAlpha(160),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.borderSubtle),
-                  ),
-                  child: Text(
-                    solution.regionDefinition!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.pureWhite,
-                      height: 1.45,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.tune_rounded, size: 14, color: color.withAlpha(180)),
+          ],
         ),
+      ),
+    );
+  }
 
-        // 2. Banner de Orientación / Inversión si aplica
-        if (hasInversion)
-          Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.amberGlow.withAlpha(20),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.amberGlow.withAlpha(100)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.swap_vert_circle_rounded, color: AppColors.amberGlow, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Propiedad de orientación activa: se detectaron límites invertidos (inferior > superior). Se aplica la identidad fundamental ∫_a^b f = -∫_b^a f con factor (-1) para garantizar rigor y conservar el signo.',
-                    style: TextStyle(fontSize: 11, color: mathColors.formulaText, height: 1.35),
-                  ),
-                ),
-              ],
-            ),
-          ),
+  String _getStepIntegralLabel(SolverStep step, int totalSteps) {
+    if (step.stepTitle != null && step.stepTitle!.isNotEmpty) {
+      final t = step.stepTitle!.toLowerCase();
+      if (t.contains('orden')) return 'Integral planteada y transformación de región:';
+      if (t.contains('sustitución') || t.contains('sustitucion')) return 'Integral a transformar:';
+      if (t.contains('algebraica') || t.contains('expansión') || t.contains('reducción')) return 'Expresión algebraica:';
+      if (t.contains('externa')) return 'La integral externa es:';
+      if (t.contains('intermedia')) return 'La integral intermedia es:';
+      if (t.contains('interna')) return 'La integral interna es:';
+    }
+    if (step.stepNumber == 1) return 'La integral interna es:';
+    if (step.stepNumber == totalSteps) return 'La integral externa es:';
+    return 'Integral del paso:';
+  }
 
-        // 3. Pasos Secuenciales Didácticos (Estructura de Libro de Texto Académico)
-        ..._buildStepCards(solution, mathColors),
-
-        // 4. Conclusión Final y Botón de Navegación 3D
-        Container(
-          margin: const EdgeInsets.only(top: 8, bottom: 24),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.slateDark,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: mathColors.primaryAction.withAlpha(120), width: 1.2),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+  Widget _buildFormulasAndMethodsSection(List<FormulaMethodCard> formulas, MathColors mathColors) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.slateDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: mathColors.primaryAction.withAlpha(100), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(
-                'Resultado Final de la Integral:',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: mathColors.primaryAction),
-              ),
-              const SizedBox(height: 8),
-              LatexCard(
-                latex: 'I = ${solution.exactLatex}',
-                isHighlight: true,
-              ),
-              if (solution.approxNumeric != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Aproximación numérica: ≈ ${solution.approxNumeric}',
-                  style: TextStyle(fontSize: 12, color: mathColors.metadataText),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: mathColors.primaryAction.withAlpha(35),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-              ],
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: mathColors.primaryAction,
-                    foregroundColor: AppColors.deepVoid,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: Icon(Icons.menu_book_rounded, color: mathColors.primaryAction, size: 18),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Formulario y Métodos Utilizados (${formulas.length})',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: mathColors.formulaText,
                   ),
-                  icon: const Icon(Icons.view_in_ar_rounded, size: 18),
-                  label: const Text(
-                    'Explorar en el Espacio 3D',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
-                  onPressed: () => _tabController.animateTo(3),
                 ),
               ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: 12),
+          ...formulas.map((item) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.deepVoid.withAlpha(160),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.functions_rounded, size: 14, color: mathColors.secondaryAccent),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          item.name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: mathColors.secondaryAccent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (item.formulaLatex.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    LatexCard(latex: item.formulaLatex),
+                  ],
+                  if (item.description.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      item.description,
+                      style: TextStyle(fontSize: 11, color: mathColors.metadataText, height: 1.4),
+                    ),
+                  ],
+                  if (item.application != null && item.application!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.cyberEmerald.withAlpha(15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.cyberEmerald.withAlpha(60)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.check_circle_outline_rounded, size: 12, color: AppColors.cyberEmerald),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Aplicación: ${item.application!}',
+                              style: const TextStyle(fontSize: 10, color: AppColors.cyberEmerald, height: 1.3),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 
   List<Widget> _buildStepCards(IntegralSolution solution, MathColors mathColors) {
     return solution.steps.map((step) {
-      final isZ = step.variable == 'z';
-      final isY = step.variable == 'y';
-      final axisColor = isZ
-          ? mathColors.axisZ
-          : (isY ? mathColors.axisY : mathColors.axisX);
+      final isZ = step.variable.toLowerCase() == 'z';
+      final isY = step.variable.toLowerCase() == 'y';
+      final isX = step.variable.toLowerCase() == 'x';
+      final isU = step.variable.toLowerCase() == 'u';
 
-      final String defaultTitle = step.stepNumber == 1
-          ? 'Paso 1: Resolver la integral interna (con respecto a ${step.variable})'
-          : (step.stepNumber == solution.steps.length
-              ? 'Paso ${step.stepNumber}: Resolver la integral externa (con respecto a ${step.variable})'
-              : 'Paso ${step.stepNumber}: Resolver la integral intermedia (con respecto a ${step.variable})');
+      Color axisColor = mathColors.secondaryAccent;
+      if (isZ) {
+        axisColor = mathColors.axisZ;
+      } else if (isY) {
+        axisColor = mathColors.axisY;
+      } else if (isX) {
+        axisColor = mathColors.axisX;
+      } else if (isU) {
+        axisColor = AppColors.amberGlow;
+      }
 
-      final String defaultIntegralLabel = step.stepNumber == 1
-          ? 'La integral interna es:'
-          : (step.stepNumber == solution.steps.length
-              ? 'La integral externa es:'
-              : 'La integral intermedia es:');
-
-      final String defaultConstantText = step.stepNumber == 1
-          ? 'Tratamos las demás variables como constantes e integramos respecto a ${step.variable}:'
-          : 'Integramos respecto a ${step.variable}:';
-
-      final String defaultLimitsText =
-          'Ahora evaluamos en los límites ${step.variable} = ${step.lowerBoundLatex} y ${step.variable} = ${step.upperBoundLatex}:';
+      final title = step.stepTitle ?? 'Paso ${step.stepNumber}';
 
       return Container(
         margin: const EdgeInsets.only(bottom: 16),
@@ -640,90 +913,91 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Encabezado del Paso + Badges
+            // Encabezado del Paso: Número + Título + Badges
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: step.isLimitInverted ? AppColors.amberGlow : mathColors.primaryAction,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '${step.stepNumber}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.deepVoid),
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: step.isLimitInverted ? AppColors.amberGlow : mathColors.primaryAction,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${step.stepNumber}',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.deepVoid),
-                        ),
+                      Text(
+                        title,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.pureWhite, height: 1.3),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          step.stepTitle ?? defaultTitle,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
-                        ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          if (step.appliedMethod != null && step.appliedMethod!.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(22),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(120)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    step.isLimitInverted ? Icons.swap_vert_rounded : Icons.functions_rounded,
+                                    size: 11,
+                                    color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    step.appliedMethod!,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (step.variable.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: axisColor.withAlpha(25),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: axisColor.withAlpha(120)),
+                              ),
+                              child: Text(
+                                isU ? 'Variable u' : 'Eje ${step.variable.toUpperCase()}',
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: axisColor),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Wrap(
-                  spacing: 6,
-                  children: [
-                    if (step.appliedMethod != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(22),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: (step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent).withAlpha(120)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              step.isLimitInverted ? Icons.swap_vert_rounded : Icons.functions_rounded,
-                              size: 11,
-                              color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              step.appliedMethod!,
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: step.isLimitInverted ? AppColors.amberGlow : mathColors.secondaryAccent,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: axisColor.withAlpha(25),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: axisColor.withAlpha(120)),
-                      ),
-                      child: Text(
-                        'Eje ${step.variable.toUpperCase()}',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: axisColor),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
             // Alerta de inversión en este paso si aplica
-            if (step.isLimitInverted)
+            if (step.isLimitInverted) ...[
               Container(
-                margin: const EdgeInsets.only(bottom: 10),
+                margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
                   color: AppColors.amberGlow.withAlpha(15),
@@ -736,90 +1010,180 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Cotas invertidas: ${step.lowerBoundLatex} > ${step.upperBoundLatex}. Se aplicó la inversión canónica con factor (-1) preservando signos en F(b) - F(a).',
+                        'Cotas invertidas: ${_formatInlineMath(step.lowerBoundLatex)} > ${_formatInlineMath(step.upperBoundLatex)}. Se aplicó la inversión canónica con factor (-1) preservando signos en F(b) - F(a).',
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.amberGlow),
                       ),
                     ),
                   ],
                 ),
               ),
+            ],
 
-            // 1. "La integral interna es:"
-            Text(
-              defaultIntegralLabel,
-              style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
-            ),
-            const SizedBox(height: 6),
-            LatexCard(
-              latex: step.stepIntegralLatex ??
-                  '\\int_{${step.lowerBoundLatex}}^{${step.upperBoundLatex}} ${step.currentIntegrandLatex} \\, d${step.variable}',
-            ),
-
-            const SizedBox(height: 10),
-
-            // 2. "Tratamos a ... como una constante e integramos respecto a ...:"
-            Text(
-              step.constantTreatmentText ?? defaultConstantText,
-              style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
-            ),
-            const SizedBox(height: 6),
-            LatexCard(
-              latex: step.antiderivativeWorkLatex ??
-                  '\\int ${step.currentIntegrandLatex} \\, d${step.variable} = ${step.antiderivativeLatex}',
-            ),
-
-            const SizedBox(height: 10),
-
-            // 3. "Ahora evaluamos en los límites ...:"
-            Text(
-              step.limitsEvaluationText ?? defaultLimitsText,
-              style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
-            ),
-            const SizedBox(height: 6),
-            LatexCard(latex: step.evaluatedLatex),
-
-            const SizedBox(height: 10),
-
-            // 4. Explicación didáctica y expresión resultante para el siguiente paso
-            if (step.explanation.isNotEmpty)
+            // 1. Planteamiento / Integral Inicial del Paso
+            if (step.stepIntegralLatex != null && step.stepIntegralLatex!.trim().isNotEmpty) ...[
               Text(
-                step.explanation,
-                style: TextStyle(fontSize: 11, color: mathColors.metadataText.withAlpha(200), height: 1.4),
+                _getStepIntegralLabel(step, solution.steps.length),
+                style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
               ),
+              const SizedBox(height: 6),
+              LatexCard(latex: step.stepIntegralLatex!),
+              const SizedBox(height: 10),
+            ],
 
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.deepVoid.withAlpha(140),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: mathColors.primaryAction.withAlpha(70)),
+            // 2. Desarrollo del método / Antiderivada / Sustitución
+            if (step.constantTreatmentText != null && step.constantTreatmentText!.trim().isNotEmpty) ...[
+              Text(
+                _formatInlineMath(step.constantTreatmentText!),
+                style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: mathColors.primaryAction),
-                  const SizedBox(width: 8),
-                  Text(
-                    step.stepNumber == solution.steps.length
-                        ? 'Resultado final del cálculo:'
-                        : 'Expresión para el Paso ${step.stepNumber + 1}:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mathColors.primaryAction),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      step.simplifiedResultLatex,
-                      textAlign: TextAlign.end,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.pureWhite),
+              const SizedBox(height: 6),
+            ],
+            if (step.antiderivativeWorkLatex != null &&
+                step.antiderivativeWorkLatex!.trim().isNotEmpty &&
+                step.antiderivativeWorkLatex != step.stepIntegralLatex) ...[
+              LatexCard(latex: step.antiderivativeWorkLatex!),
+              const SizedBox(height: 10),
+            ],
+
+            // 3. Evaluación de Límites o aritmética de sustitución
+            if (step.limitsEvaluationText != null && step.limitsEvaluationText!.trim().isNotEmpty) ...[
+              Text(
+                _formatInlineMath(step.limitsEvaluationText!),
+                style: TextStyle(fontSize: 12, color: mathColors.metadataText, height: 1.4),
+              ),
+              const SizedBox(height: 6),
+            ],
+            if (step.evaluatedLatex.trim().isNotEmpty &&
+                step.evaluatedLatex != step.antiderivativeWorkLatex &&
+                step.evaluatedLatex != step.stepIntegralLatex) ...[
+              LatexCard(latex: step.evaluatedLatex),
+              const SizedBox(height: 10),
+            ],
+
+            // 4. Explicación didáctica
+            if (step.explanation.isNotEmpty) ...[
+              Container(
+                margin: const EdgeInsets.only(top: 2, bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.deepVoid.withAlpha(110),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _formatInlineMath(step.explanation),
+                  style: TextStyle(fontSize: 11, color: mathColors.metadataText.withAlpha(220), height: 1.45),
+                ),
+              ),
+            ],
+
+            // 5. Milestone / Expresión resultante del paso (Renderizado Matemático KaTeX)
+            if (step.simplifiedResultLatex.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.deepVoid.withAlpha(160),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: mathColors.primaryAction.withAlpha(90)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.arrow_forward_rounded, size: 14, color: mathColors.primaryAction),
+                    const SizedBox(width: 8),
+                    Text(
+                      step.stepNumber == solution.steps.length
+                          ? 'Resultado final del cálculo:'
+                          : 'Expresión para el Paso ${step.stepNumber + 1}:',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mathColors.primaryAction),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: Math.tex(
+                            LatexSanitizer.sanitize(step.simplifiedResultLatex),
+                            textStyle: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.pureWhite,
+                            ),
+                            onErrorFallback: (_) => Text(
+                              _formatInlineMath(step.simplifiedResultLatex),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.pureWhite,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       );
     }).toList();
+  }
+
+  /// Limpia y formatea expresiones matemáticas que aparecen dentro de textos explicativos
+  String _formatInlineMath(String text) {
+    if (text.isEmpty) return text;
+    var result = text;
+    // Raíces cuadradas
+    result = result.replaceAllMapped(RegExp(r'\\sqrt\{([^}]+)\}'), (m) => '√(${m[1]})');
+    result = result.replaceAllMapped(RegExp(r'\\sqrt\s*([a-zA-Z0-9])'), (m) => '√${m[1]}');
+    // Fracciones simples \frac{a}{b} -> (a/b)
+    result = result.replaceAllMapped(RegExp(r'\\frac\{([^}]+)\}\{([^}]+)\}'), (m) => '(${m[1]}/${m[2]})');
+    // Símbolos matemáticos
+    result = result
+        .replaceAll(r'\le', '≤')
+        .replaceAll(r'\ge', '≥')
+        .replaceAll(r'\pm', '±')
+        .replaceAll(r'\mp', '∓')
+        .replaceAll(r'\ne', '≠')
+        .replaceAll(r'\cdot', '·')
+        .replaceAll(r'\times', '×')
+        .replaceAll(r'\approx', '≈')
+        .replaceAll(r'\sim', '~')
+        .replaceAll(r'\pi', 'π')
+        .replaceAll(r'\theta', 'θ')
+        .replaceAll(r'\rho', 'ρ')
+        .replaceAll(r'\phi', 'φ')
+        .replaceAll(r'\infty', '∞')
+        .replaceAll(r'\int', '∫')
+        .replaceAll(r'\iint', '∬')
+        .replaceAll(r'\iiint', '∭')
+        .replaceAll(r'\oint', '∮');
+    // Superíndices
+    result = result
+        .replaceAll('^{2}', '²')
+        .replaceAll('^2', '²')
+        .replaceAll('^{3}', '³')
+        .replaceAll('^3', '³')
+        .replaceAll('^{4}', '⁴')
+        .replaceAll('^4', '⁴')
+        .replaceAll('^{0}', '⁰')
+        .replaceAll('^0', '⁰')
+        .replaceAll('^{1}', '¹')
+        .replaceAll('^1', '¹');
+    // Funciones
+    result = result
+        .replaceAll(r'\sin', 'sin')
+        .replaceAll(r'\cos', 'cos')
+        .replaceAll(r'\tan', 'tan')
+        .replaceAll(r'\sec', 'sec')
+        .replaceAll(r'\csc', 'csc')
+        .replaceAll(r'\cot', 'cot')
+        .replaceAll(r'\ln', 'ln')
+        .replaceAll(r'\log', 'log')
+        .replaceAll(r'\exp', 'exp');
+    return result;
   }
 
   Widget _build3DViewportTab(SolverState state) {

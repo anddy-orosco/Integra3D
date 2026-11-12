@@ -34,12 +34,51 @@ class IntegralExpressionTransformer {
     expr = expr.replaceAllMapped(fracRegex, (m) => '(${m.group(1)})/(${m.group(2)})');
 
     // Limpiar barras invertidas sobrantes de LaTeX si las hubiera
-    expr = expr.replaceAll(r'\sin', 'sin')
+    expr = expr.replaceAll(r'\arcsin', 'asin')
+        .replaceAll(r'\arccos', 'acos')
+        .replaceAll(r'\arctan', 'atan')
+        .replaceAll(r'\sinh', 'sinh')
+        .replaceAll(r'\cosh', 'cosh')
+        .replaceAll(r'\tanh', 'tanh')
+        .replaceAll(r'\sin', 'sin')
         .replaceAll(r'\cos', 'cos')
         .replaceAll(r'\tan', 'tan')
+        .replaceAll(r'\sec', 'sec')
+        .replaceAll(r'\csc', 'csc')
+        .replaceAll(r'\cot', 'cot')
         .replaceAll(r'\exp', 'exp')
         .replaceAll(r'\ln', 'ln')
         .replaceAll(r'\log', 'log');
+
+    // 2b. Convertir cos^2(x) / \cos^{2}(x) a cos(x)^2 ANTES de multiplicar dígitos implícitos
+    final trigPowRegex = RegExp(
+      r'\b(arcsin|arccos|arctan|asin|acos|atan|sinh|cosh|tanh|sin|cos|tan|sec|csc|cot|ln|log)\s*\^\s*(?:\{([^{}]+)\}|([0-9]+))\s*\(',
+      caseSensitive: false,
+    );
+    int trigFrom = 0;
+    while (true) {
+      final m = trigPowRegex.firstMatch(expr.substring(trigFrom));
+      if (m == null) break;
+      final absStart = trigFrom + m.start;
+      final openParen = trigFrom + m.end - 1;
+      int depth = 1;
+      int pos = openParen + 1;
+      while (pos < expr.length && depth > 0) {
+        if (expr[pos] == '(') depth++;
+        if (expr[pos] == ')') depth--;
+        pos++;
+      }
+      if (depth == 0) {
+        final fn = m.group(1)!;
+        final powStr = m.group(2) ?? m.group(3)!;
+        final arg = expr.substring(openParen + 1, pos - 1);
+        final replacement = '$fn($arg)^$powStr';
+        expr = expr.replaceRange(absStart, pos, replacement);
+        trigFrom = absStart + replacement.length;
+      } else {
+        trigFrom = openParen + 1;
+      }
+    }
 
     // 3. Multiplicación implícita:
     // Número seguido de variable o función: ej. 3y -> 3*y, 2x -> 2*x, 4sin(x) -> 4*sin(x)
@@ -278,6 +317,14 @@ class IntegralExpressionTransformer {
     expr = _replaceFunctionWithBalancedBrackets(expr, 'abs', (arg) => '|${toDisplayLatex(arg)}|');
 
     // 2. Eliminar multiplicación explícita innecesaria (*)
+    expr = expr.replaceAllMapped(
+      RegExp(r'(\d+)\s*\*\s*([xyzXYZ](?:[\s\^\+\-\*/\)]|$))'),
+      (m) => '${m.group(1)}${m.group(2)}',
+    );
+    expr = expr.replaceAllMapped(
+      RegExp(r'([xyzXYZ])\s*\*\s*([xyzXYZ])'),
+      (m) => '${m.group(1)}${m.group(2)}',
+    );
     expr = expr.replaceAllMapped(
       RegExp(r'(\d+)\s*\*\s*([a-zA-Z\(\\])'),
       (m) => '${m.group(1)} ${m.group(2)}',

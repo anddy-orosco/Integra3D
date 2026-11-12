@@ -76,6 +76,45 @@ class PedagogicalSection {
   }
 }
 
+class FormulaMethodCard {
+  final String name;
+  final String formulaLatex;
+  final String description;
+  final String? application;
+
+  const FormulaMethodCard({
+    required this.name,
+    required this.formulaLatex,
+    required this.description,
+    this.application,
+  });
+
+  factory FormulaMethodCard.fromJson(Map<String, dynamic> json) {
+    return FormulaMethodCard(
+      name: json['name'] as String? ??
+          json['nombre'] as String? ??
+          json['method_name'] as String? ??
+          json['titulo'] as String? ??
+          'Método Matemático',
+      formulaLatex: json['formula_latex'] as String? ??
+          json['formula'] as String? ??
+          json['latex'] as String? ??
+          json['ecuacion'] as String? ??
+          '',
+      description: json['description'] as String? ??
+          json['descripcion'] as String? ??
+          json['desc'] as String? ??
+          json['teoria'] as String? ??
+          '',
+      application: json['application'] as String? ??
+          json['aplicacion'] as String? ??
+          json['usage'] as String? ??
+          json['uso'] as String? ??
+          json['exercise_application'] as String?,
+    );
+  }
+}
+
 class IntegralSolution {
   final bool isSuccess;
   final String exactLatex;
@@ -86,6 +125,9 @@ class IntegralSolution {
   final double executionTimeMs;
   final List<PedagogicalSection>? didacticSections;
   final String? regionDefinition;
+  final String? aiProvider;
+  final String? aiStatus;
+  final List<FormulaMethodCard>? formulasAndMethods;
 
   const IntegralSolution({
     required this.isSuccess,
@@ -97,33 +139,71 @@ class IntegralSolution {
     this.executionTimeMs = 0.0,
     this.didacticSections,
     this.regionDefinition,
+    this.aiProvider,
+    this.aiStatus,
+    this.formulasAndMethods,
   });
 
   factory IntegralSolution.fromJson(Map<String, dynamic> json) {
     final stepsJson = json['steps'] as List<dynamic>? ?? [];
+    final sectionsJson = (json['didactic_sections'] ?? json['sections']) as List<dynamic>? ?? [];
+    final sections = sectionsJson
+        .map((e) => PedagogicalSection.fromJson(e as Map<String, dynamic>))
+        .toList();
+
+    final formulasJson = (json['formulas_and_methods'] ?? json['methods_and_formulas'] ?? json['formulas']) as List<dynamic>? ?? [];
+    final formulas = formulasJson
+        .map((e) => FormulaMethodCard.fromJson(e as Map<String, dynamic>))
+        .toList();
+
     return IntegralSolution(
       isSuccess: json['is_success'] as bool? ?? false,
-      exactLatex: json['exact_latex'] as String? ?? '',
-      approxNumeric: (json['approx_numeric'] as num?)?.toDouble(),
+      exactLatex: json['exact_latex'] as String? ?? json['exact_result_latex'] as String? ?? '',
+      approxNumeric: (json['approx_numeric'] as num?)?.toDouble() ??
+          (json['decimal_result'] as num?)?.toDouble(),
       steps: stepsJson.map((e) => SolverStep.fromJson(e as Map<String, dynamic>)).toList(),
-      originalIntegralLatex: json['original_integral_latex'] as String? ?? '',
+      originalIntegralLatex: json['original_integral_latex'] as String? ?? json['integral_latex'] as String? ?? '',
       errorMessage: json['error_message'] as String?,
       executionTimeMs: (json['execution_time_ms'] as num?)?.toDouble() ?? 0.0,
+      didacticSections: sections.isNotEmpty ? sections : null,
       regionDefinition: json['region_definition'] as String?,
+      aiProvider: json['ai_provider'] as String?,
+      aiStatus: json['ai_status'] as String?,
+      formulasAndMethods: formulas.isNotEmpty ? formulas : null,
+    );
+  }
+
+  IntegralSolution copyWith({
+    bool? isSuccess,
+    String? exactLatex,
+    double? approxNumeric,
+    List<SolverStep>? steps,
+    String? originalIntegralLatex,
+    String? errorMessage,
+    double? executionTimeMs,
+    List<PedagogicalSection>? didacticSections,
+    String? regionDefinition,
+    String? aiProvider,
+    String? aiStatus,
+    List<FormulaMethodCard>? formulasAndMethods,
+  }) {
+    return IntegralSolution(
+      isSuccess: isSuccess ?? this.isSuccess,
+      exactLatex: exactLatex ?? this.exactLatex,
+      approxNumeric: approxNumeric ?? this.approxNumeric,
+      steps: steps ?? this.steps,
+      originalIntegralLatex: originalIntegralLatex ?? this.originalIntegralLatex,
+      errorMessage: errorMessage ?? this.errorMessage,
+      executionTimeMs: executionTimeMs ?? this.executionTimeMs,
+      didacticSections: didacticSections ?? this.didacticSections,
+      regionDefinition: regionDefinition ?? this.regionDefinition,
+      aiProvider: aiProvider ?? this.aiProvider,
+      aiStatus: aiStatus ?? this.aiStatus,
+      formulasAndMethods: formulasAndMethods ?? this.formulasAndMethods,
     );
   }
 
   IntegralSolution copyWithDidactic(List<PedagogicalSection> sections) {
-    return IntegralSolution(
-      isSuccess: isSuccess,
-      exactLatex: exactLatex,
-      approxNumeric: approxNumeric,
-      steps: steps,
-      originalIntegralLatex: originalIntegralLatex,
-      errorMessage: errorMessage,
-      executionTimeMs: executionTimeMs,
-      didacticSections: sections,
-      regionDefinition: regionDefinition,
-    );
+    return copyWith(didacticSections: sections);
   }
 }

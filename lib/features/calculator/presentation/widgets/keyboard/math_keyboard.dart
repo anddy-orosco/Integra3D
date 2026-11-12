@@ -453,132 +453,139 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
 
   @override
   Widget build(BuildContext context) {
-    const activeOrange = Color(0xFFE65100);
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF1F5F9), // Slate 100 claro idéntico a Mathway
-        border: Border(top: BorderSide(color: Color(0xFFCBD5E1), width: 1.5)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Barra de Pestañas Superiores del Teclado (Desplazable horizontalmente para móvil)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isConstrained = constraints.maxHeight.isFinite && constraints.maxHeight > 200;
+
+        final tabBar = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+          decoration: const BoxDecoration(
+            color: Color(0xFFE2E8F0),
+            border: Border(bottom: BorderSide(color: Color(0xFFCBD5E1))),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                _buildPageTab(0, '123 Álgebra', Icons.calculate_outlined),
+                const SizedBox(width: 4),
+                _buildPageTab(1, '∬ Multivariable & Dif', Icons.all_inclusive_rounded),
+                const SizedBox(width: 4),
+                _buildPageTab(2, 'sin Trigo', Icons.functions_rounded),
+                const SizedBox(width: 4),
+                _buildPageTab(3, 'abc Letras', Icons.text_fields_rounded),
+                const SizedBox(width: 10),
+
+                // Botones rápidos de salto entre ranuras (cuadritos)
+                if (widget.onPrevSlot != null)
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Color(0xFF475569)),
+                    tooltip: 'Ranura anterior',
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                    onPressed: widget.onPrevSlot,
+                  ),
+                if (widget.onNextSlot != null)
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF475569)),
+                    tooltip: 'Siguiente ranura',
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                    onPressed: widget.onNextSlot,
+                  ),
+                if (widget.onClearSlot != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFFE65100)),
+                    tooltip: 'Limpiar cuadrito actual',
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                    onPressed: widget.onClearSlot,
+                  ),
+              ],
+            ),
+          ),
+        );
+
+        if (isConstrained) {
+          return Container(
             decoration: const BoxDecoration(
-              color: Color(0xFFE2E8F0),
-              border: Border(bottom: BorderSide(color: Color(0xFFCBD5E1))),
+              color: Color(0xFFF1F5F9), // Slate 100 claro idéntico a Mathway
+              border: Border(top: BorderSide(color: Color(0xFFCBD5E1), width: 1.5)),
             ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: [
-                  _buildPageTab(0, '123 Álgebra', Icons.calculate_outlined),
-                  const SizedBox(width: 4),
-                  _buildPageTab(1, '∬ Multivariable & Dif', Icons.all_inclusive_rounded),
-                  const SizedBox(width: 4),
-                  _buildPageTab(2, 'sin Trigo', Icons.functions_rounded),
-                  const SizedBox(width: 4),
-                  _buildPageTab(3, 'abc Letras', Icons.text_fields_rounded),
-                  const SizedBox(width: 10),
-
-                  // Botones rápidos de salto entre ranuras (cuadritos)
-                  if (widget.onPrevSlot != null)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Color(0xFF475569)),
-                      tooltip: 'Ranura anterior',
-                      padding: const EdgeInsets.all(4),
-                      constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                      onPressed: widget.onPrevSlot,
-                    ),
-                  if (widget.onNextSlot != null)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF475569)),
-                      tooltip: 'Siguiente ranura',
-                      padding: const EdgeInsets.all(4),
-                      constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                      onPressed: widget.onNextSlot,
-                    ),
-                  if (widget.onClearSlot != null)
-                    IconButton(
-                      icon: const Icon(Icons.clear_rounded, size: 16, color: activeOrange),
-                      tooltip: 'Limpiar cuadrito actual',
-                      padding: const EdgeInsets.all(4),
-                      constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                      onPressed: widget.onClearSlot,
-                    ),
-                ],
-              ),
+            child: Column(
+              children: [
+                tabBar,
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    child: _buildCurrentPageLayout(isFlexible: true),
+                  ),
+                ),
+                if (bottomInset > 0) SizedBox(height: bottomInset),
+              ],
             ),
-          ),
-
-          // Grilla de Teclas de la Página Activa
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: _buildCurrentPageLayout(),
-          ),
-        ],
-      ),
+          );
+        } else {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF1F5F9),
+              border: Border(top: BorderSide(color: Color(0xFFCBD5E1), width: 1.5)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                tabBar,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: _buildCurrentPageLayout(isFlexible: false),
+                ),
+                if (bottomInset > 0) SizedBox(height: bottomInset),
+              ],
+            ),
+          );
+        }
+      },
     );
   }
 
-  Widget _buildCurrentPageLayout() {
+  Widget _buildCurrentPageLayout({bool isFlexible = false}) {
     switch (_activePage) {
       case 0:
-        return Column(
-          children: [
-            _buildRow(p0Row1),
-            const SizedBox(height: 3),
-            _buildRow(p0Row2),
-            const SizedBox(height: 3),
-            _buildRow(p0Row3),
-            const SizedBox(height: 3),
-            _buildRow(p0Row4),
-            const SizedBox(height: 3),
-            _buildRow(p0Row5),
-          ],
-        );
+        return _wrapRows([p0Row1, p0Row2, p0Row3, p0Row4, p0Row5], isFlexible);
       case 1:
-        return Column(
-          children: [
-            _buildRow(p1Row1),
-            const SizedBox(height: 3),
-            _buildRow(p1Row2),
-            const SizedBox(height: 3),
-            _buildRow(p1Row3),
-            const SizedBox(height: 3),
-            _buildRow(p1Row4),
-            const SizedBox(height: 3),
-            _buildRow(p1Row5),
-          ],
-        );
+        return _wrapRows([p1Row1, p1Row2, p1Row3, p1Row4, p1Row5], isFlexible);
       case 2:
-        return Column(
-          children: [
-            _buildRow(p2Row1),
-            const SizedBox(height: 3),
-            _buildRow(p2Row2),
-            const SizedBox(height: 3),
-            _buildRow(p2Row3),
-            const SizedBox(height: 3),
-            _buildRow(p2Row4),
-            const SizedBox(height: 3),
-            _buildRow(p2Row5),
-          ],
-        );
+        return _wrapRows([p2Row1, p2Row2, p2Row3, p2Row4, p2Row5], isFlexible);
       case 3:
       default:
         final alphaRows = _buildAlphaRows();
-        return Column(
-          children: alphaRows.map((r) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 3.0),
-              child: _buildRow(r),
-            );
-          }).toList(),
-        );
+        return _wrapRows(alphaRows, isFlexible);
+    }
+  }
+
+  Widget _wrapRows(List<List<MathwayKey>> rows, bool isFlexible) {
+    if (isFlexible) {
+      return Column(
+        children: [
+          for (int i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: 3),
+            Expanded(child: _buildRow(rows[i], isFlexible: true)),
+          ],
+        ],
+      );
+    } else {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (int i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: 3),
+            _buildRow(rows[i], isFlexible: false),
+          ],
+        ],
+      );
     }
   }
 
@@ -622,21 +629,22 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
     );
   }
 
-  Widget _buildRow(List<MathwayKey> row) {
+  Widget _buildRow(List<MathwayKey> row, {bool isFlexible = false}) {
     return Row(
+      crossAxisAlignment: isFlexible ? CrossAxisAlignment.stretch : CrossAxisAlignment.center,
       children: row.map((key) {
         return Expanded(
           flex: key.flex,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 1.5),
-            child: _buildKeyWidget(key),
+            child: _buildKeyWidget(key, isFlexible: isFlexible),
           ),
         );
       }).toList(),
     );
   }
 
-  Widget _buildKeyWidget(MathwayKey key) {
+  Widget _buildKeyWidget(MathwayKey key, {bool isFlexible = false}) {
     const orangeColor = Color(0xFFE65100);
 
     return Material(
@@ -645,7 +653,7 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
         borderRadius: BorderRadius.circular(6),
         onTap: () => _handleKeyPress(key),
         child: Container(
-          height: 38,
+          height: isFlexible ? double.infinity : 38,
           decoration: BoxDecoration(
             color: key.isOrange ? orangeColor : (key.customBgColor ?? Colors.white),
             borderRadius: BorderRadius.circular(6),

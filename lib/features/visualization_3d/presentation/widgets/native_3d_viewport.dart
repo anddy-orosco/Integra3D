@@ -17,7 +17,8 @@ class _Native3DViewportState extends State<Native3DViewport>
     with SingleTickerProviderStateMixin {
   double _yaw = -math.pi / 4;
   double _pitch = math.pi / 6;
-  double _zoom = 2.4;
+  double _zoom = 1.3;
+  double _baseZoom = 1.3;
   Offset _pan = Offset.zero;
 
   bool _showWireframe = true;
@@ -51,7 +52,8 @@ class _Native3DViewportState extends State<Native3DViewport>
     setState(() {
       _yaw = -math.pi / 4;
       _pitch = math.pi / 6;
-      _zoom = 2.4;
+      _zoom = 1.3;
+      _baseZoom = 1.3;
       _pan = Offset.zero;
     });
   }
@@ -103,17 +105,21 @@ class _Native3DViewportState extends State<Native3DViewport>
         children: [
           // 3D Canvas with gesture detection
           GestureDetector(
+            onScaleStart: (details) {
+              _baseZoom = _zoom;
+            },
             onScaleUpdate: (details) {
               setState(() {
                 if (details.pointerCount == 1) {
-                  // Rotation
-                  _yaw += details.focalPointDelta.dx * 0.008;
-                  _pitch = (_pitch - details.focalPointDelta.dy * 0.008)
+                  // Controlled smooth rotation
+                  _yaw += details.focalPointDelta.dx * 0.006;
+                  _pitch = (_pitch - details.focalPointDelta.dy * 0.006)
                       .clamp(-math.pi / 2.2, math.pi / 2.2);
-                } else if (details.pointerCount == 2) {
-                  // Pan and Zoom
+                } else if (details.pointerCount >= 2) {
+                  // Pan and Damped Smooth Zoom
                   _pan += details.focalPointDelta;
-                  _zoom = (_zoom * details.scale).clamp(0.8, 6.0);
+                  final scaleFactor = 1.0 + (details.scale - 1.0) * 0.55;
+                  _zoom = (_baseZoom * scaleFactor).clamp(0.4, 7.0);
                 }
               });
             },

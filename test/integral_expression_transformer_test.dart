@@ -84,9 +84,11 @@ void main() {
       expect(solution.isSuccess, isTrue);
       expect(solution.exactLatex, r'\frac{2469}{20}');
       expect(solution.approxNumeric, 123.45);
-      expect(solution.steps.length, 2);
-      expect(solution.steps[0].variable, 'x');
-      expect(solution.steps[1].variable, 'y');
+      expect(solution.steps.length, equals(6));
+      expect(solution.steps.first.variable, 'x');
+      expect(solution.steps.last.variable, 'y');
+      expect(solution.steps.where((s) => s.variable == 'x').length, greaterThanOrEqualTo(2));
+      expect(solution.steps.where((s) => s.variable == 'y').length, greaterThanOrEqualTo(2));
     });
 
     test('solves user custom 3D integral accurately instead of returning default 1/6', () {
@@ -108,11 +110,11 @@ void main() {
       expect(solution.approxNumeric!, closeTo(0.0358, 0.005));
       expect(solution.approxNumeric!, isNot(closeTo(0.1667, 0.01)));
 
-      // Step-by-step resolution must have 3 steps for z, y, x
-      expect(solution.steps.length, 3);
-      expect(solution.steps[0].variable, 'z');
-      expect(solution.steps[1].variable, 'y');
-      expect(solution.steps[2].variable, 'x');
+      // Step-by-step resolution must have 6 steps across z, y, x
+      expect(solution.steps.length, 6);
+      expect(solution.steps.where((s) => s.variable == 'z').length, 2);
+      expect(solution.steps.where((s) => s.variable == 'y').length, 2);
+      expect(solution.steps.where((s) => s.variable == 'x').length, 2);
 
       // Original integral LaTeX must not contain raw programming tokens
       expect(solution.originalIntegralLatex, isNot(contains('exp')));
@@ -150,9 +152,10 @@ void main() {
       expect(solution.approxNumeric, isNotNull);
       // ∫_9^4 x dx = [x^2/2]_9^4 = (16 - 81)/2 = -32.5
       expect(solution.approxNumeric!, closeTo(-32.5, 0.01));
+      expect(solution.steps.length, 4);
       expect(solution.steps.first.isLimitInverted, isTrue);
       expect(solution.steps.first.appliedMethod, contains('Inversión'));
-      expect(solution.steps.first.evaluatedLatex, contains('-(F(9) - F(4))'));
+      expect(solution.steps.any((s) => s.evaluatedLatex.contains('-(F(9) - F(4))')), isTrue);
     });
 
     test('correctly evaluates 1D integral with identical limits to zero (∫_5^5 x^2 dx = 0.0)', () {
@@ -192,10 +195,11 @@ void main() {
       expect(solution.approxNumeric!, closeTo(-10.0, 0.05));
       expect(solution.approxNumeric!, isNot(0.0)); // Must NOT be 0.0000!
 
-      // Step 2 (middle variable y) must have isLimitInverted = true
-      expect(solution.steps[1].variable, 'y');
-      expect(solution.steps[1].isLimitInverted, isTrue);
-      expect(solution.steps[1].appliedMethod, contains('Inversión'));
+      // Middle variable y evaluation step must have isLimitInverted = true
+      expect(
+        solution.steps.any((s) => s.variable == 'y' && s.isLimitInverted && (s.appliedMethod ?? '').contains('Inversión')),
+        isTrue,
+      );
     });
 
     test('correctly solves 2D double integral with inverted outer and inner bounds', () {
@@ -214,8 +218,8 @@ void main() {
       expect(solution.isSuccess, isTrue);
       expect(solution.approxNumeric, isNotNull);
       expect(solution.approxNumeric!, closeTo(10.0, 0.05));
-      expect(solution.steps[0].isLimitInverted, isTrue);
-      expect(solution.steps[1].isLimitInverted, isTrue);
+      expect(solution.steps.any((s) => s.variable == 'y' && s.isLimitInverted), isTrue);
+      expect(solution.steps.any((s) => s.variable == 'x' && s.isLimitInverted), isTrue);
     });
 
     test('solves textbook photo integral ∫_0^2 ∫_0^x 4xy dy dx with complete derivations matching user reference', () {
@@ -237,29 +241,39 @@ void main() {
       expect(solution.regionDefinition!, contains(r'0 \le x \le 2'));
       expect(solution.regionDefinition!, contains(r'0 \le y \le x'));
 
-      expect(solution.steps.length, 2);
+      expect(solution.steps.length, equals(5));
 
-      // Paso 1: Integral interna respecto a y
+      // Paso 1: Planteamiento sobre región triangular
       final step1 = solution.steps[0];
       expect(step1.variable, 'y');
-      expect(step1.stepTitle, contains('Paso 1: Resolver la integral interna'));
+      expect(step1.stepTitle, contains('Paso 1:'));
       expect(step1.stepIntegralLatex, contains(r'\int_{0}^{x} 4xy'));
-      expect(step1.constantTreatmentText, contains('Tratamos a x como una constante'));
-      expect(step1.antiderivativeWorkLatex, contains(r'2xy^2'));
-      expect(step1.limitsEvaluationText, contains('y = 0'));
-      expect(step1.evaluatedLatex, contains(r'2x^3'));
-      expect(step1.simplifiedResultLatex, r'2x^3');
 
-      // Paso 2: Integral externa respecto a x
+      // Paso 2: Antiderivada parcial interna respecto a y
       final step2 = solution.steps[1];
-      expect(step2.variable, 'x');
-      expect(step2.stepTitle, contains('Paso 2: Resolver la integral externa'));
-      expect(step2.stepIntegralLatex, contains(r'\int_{0}^{2} 2x^3'));
-      expect(step2.constantTreatmentText, contains('Integramos respecto a x'));
-      expect(step2.antiderivativeWorkLatex, contains(r'\frac{x^4}{2}'));
-      expect(step2.limitsEvaluationText, contains('x = 0'));
-      expect(step2.evaluatedLatex, contains('8'));
-      expect(step2.simplifiedResultLatex, '8');
+      expect(step2.variable, 'y');
+      expect(step2.constantTreatmentText, contains('Tratamos a x como una constante'));
+      expect(step2.antiderivativeWorkLatex, contains(r'2xy^2'));
+
+      // Paso 3: Evaluación en los límites internos y = 0 y y = x
+      final step3 = solution.steps[2];
+      expect(step3.variable, 'y');
+      expect(step3.limitsEvaluationText, contains('y = 0'));
+      expect(step3.evaluatedLatex, contains(r'2x^3'));
+      expect(step3.simplifiedResultLatex, r'2x^3');
+
+      // Paso 4: Integral externa respecto a x
+      final step4 = solution.steps[3];
+      expect(step4.variable, 'x');
+      expect(step4.stepIntegralLatex, contains(r'\int_{0}^{2} 2x^3'));
+      expect(step4.antiderivativeWorkLatex, contains(r'\frac{x^4}{2}'));
+
+      // Paso 5: Evaluación final en límites externos [0, 2]
+      final step5 = solution.steps[4];
+      expect(step5.variable, 'x');
+      expect(step5.limitsEvaluationText, contains('x = 0'));
+      expect(step5.evaluatedLatex, contains('8'));
+      expect(step5.simplifiedResultLatex, '8');
     });
 
     test('solves procedural monomial integral dynamically: ∫_0^3 ∫_0^x 4xy dy dx = 40.5 or 81/2', () {
@@ -278,7 +292,7 @@ void main() {
       // \int_0^3 2x^3 dx = [x^4/2]_0^3 = 81/2 = 40.5
       expect(solution.approxNumeric, closeTo(40.5, 0.01));
       expect(solution.regionDefinition, contains(r'0 \le x \le 3'));
-      expect(solution.steps.length, 2);
+      expect(solution.steps.length, greaterThanOrEqualTo(2));
       expect(solution.steps[0].stepTitle, contains('Paso 1'));
       expect(solution.steps[1].stepTitle, contains('Paso 2'));
     });

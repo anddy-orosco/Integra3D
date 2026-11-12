@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/latex_sanitizer.dart';
 
 class LatexCard extends StatelessWidget {
   final String latex;
@@ -22,6 +23,8 @@ class LatexCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (latex.trim().isEmpty) return const SizedBox.shrink();
+
+    final cleanLatex = LatexSanitizer.sanitize(latex);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -58,7 +61,7 @@ class LatexCard extends StatelessWidget {
                   InkWell(
                     borderRadius: BorderRadius.circular(6),
                     onTap: () {
-                      Clipboard.setData(ClipboardData(text: latex));
+                      Clipboard.setData(ClipboardData(text: cleanLatex));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Fórmula copiada en formato LaTeX'),
@@ -89,7 +92,7 @@ class LatexCard extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6.0),
                   child: Math.tex(
-                    latex,
+                    cleanLatex,
                     textStyle: mathStyle ??
                         TextStyle(
                           fontSize: isHighlight ? 19 : 16,
@@ -97,11 +100,13 @@ class LatexCard extends StatelessWidget {
                           fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
                         ),
                     onErrorFallback: (err) => SelectableText(
-                      latex,
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        color: AppColors.amberGlow,
-                        fontSize: 13,
+                      LatexSanitizer.toReadableUnicode(cleanLatex),
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        color: isHighlight ? AppColors.electricCyan : AppColors.pureWhite,
+                        fontSize: isHighlight ? 18 : 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ),

@@ -73,16 +73,16 @@ class MathExpressionEvaluator {
     }
   }
 
-  // term = factor (('*' | '/') factor)*
+  // term = unary (('*' | '/') unary)*
   double _parseTerm({required double x, required double y, required double z}) {
-    double v = _parseFactor(x: x, y: y, z: z);
+    double v = _parseUnary(x: x, y: y, z: z);
     while (true) {
       if (_eat(42)) {
         // '*'
-        v *= _parseFactor(x: x, y: y, z: z);
+        v *= _parseUnary(x: x, y: y, z: z);
       } else if (_eat(47)) {
         // '/'
-        final divisor = _parseFactor(x: x, y: y, z: z);
+        final divisor = _parseUnary(x: x, y: y, z: z);
         v = (divisor != 0.0) ? v / divisor : (v == 0.0 ? double.nan : (v > 0 ? double.infinity : -double.infinity));
       } else {
         return v;
@@ -90,13 +90,19 @@ class MathExpressionEvaluator {
     }
   }
 
-  // factor = power
-  // power = unary ('^' factor)?
+  // unary = ('+' | '-') unary | power
+  double _parseUnary({required double x, required double y, required double z}) {
+    if (_eat(43)) return _parseUnary(x: x, y: y, z: z); // '+'
+    if (_eat(45)) return -_parseUnary(x: x, y: y, z: z); // '-'
+    return _parseFactor(x: x, y: y, z: z);
+  }
+
+  // power = primary ('^' unary)?
   double _parseFactor({required double x, required double y, required double z}) {
-    double v = _parseUnary(x: x, y: y, z: z);
+    double v = _parsePrimary(x: x, y: y, z: z);
     if (_eat(94)) {
       // '^'
-      final exponent = _parseFactor(x: x, y: y, z: z);
+      final exponent = _parseUnary(x: x, y: y, z: z);
       if (v < 0 && exponent != exponent.roundToDouble()) {
         v = double.nan; // Indefinido en reales para potencias fraccionarias de negativos
       } else {
@@ -104,13 +110,6 @@ class MathExpressionEvaluator {
       }
     }
     return v;
-  }
-
-  // unary = ('+' | '-') unary | primary
-  double _parseUnary({required double x, required double y, required double z}) {
-    if (_eat(43)) return _parseUnary(x: x, y: y, z: z); // '+'
-    if (_eat(45)) return -_parseUnary(x: x, y: y, z: z); // '-'
-    return _parsePrimary(x: x, y: y, z: z);
   }
 
   // primary = number | variable | function '(' expression ')' | '(' expression ')'
@@ -146,31 +145,69 @@ class MathExpressionEvaluator {
       if (name == 'pi') return math.pi;
       if (name == 'e') return math.e;
 
+      // Potencia directa en notación función^k(arg), ej. cos^2(x)
+      double? fnPower;
+      if (_eat(94)) {
+        fnPower = _parseUnary(x: x, y: y, z: z);
+      }
+
       // Funciones
       if (_eat(40)) {
         // '('
         final arg = _parseExpression(x: x, y: y, z: z);
         _eat(41); // ')'
 
+        double val;
         switch (name) {
           case 'sqrt':
-            return arg >= 0 ? math.sqrt(arg) : double.nan;
+            val = arg >= 0 ? math.sqrt(arg) : double.nan;
           case 'sin':
-            return math.sin(arg);
+            val = math.sin(arg);
           case 'cos':
-            return math.cos(arg);
+            val = math.cos(arg);
           case 'tan':
-            return math.tan(arg);
+            val = math.tan(arg);
+          case 'sec':
+            final c = math.cos(arg);
+            val = c.abs() < 1e-12 ? double.nan : 1.0 / c;
+          case 'csc':
+            final s = math.sin(arg);
+            val = s.abs() < 1e-12 ? double.nan : 1.0 / s;
+          case 'cot':
+            final t = math.tan(arg);
+            val = t.abs() < 1e-12 ? double.nan : 1.0 / t;
+          case 'sinh':
+            val = (math.exp(arg) - math.exp(-arg)) / 2.0;
+          case 'cosh':
+            val = (math.exp(arg) + math.exp(-arg)) / 2.0;
+          case 'tanh':
+            final ep = math.exp(arg);
+            final em = math.exp(-arg);
+            val = (ep - em) / (ep + em);
+          case 'asin':
+          case 'arcsin':
+            val = (arg >= -1.0 && arg <= 1.0) ? math.asin(arg) : double.nan;
+          case 'acos':
+          case 'arccos':
+            val = (arg >= -1.0 && arg <= 1.0) ? math.acos(arg) : double.nan;
+          case 'atan':
+          case 'arctan':
+            val = math.atan(arg);
           case 'exp':
-            return math.exp(arg);
+            val = math.exp(arg);
           case 'ln':
           case 'log':
-            return arg > 0 ? math.log(arg) : double.nan;
+            val = arg > 0 ? math.log(arg) : double.nan;
           case 'abs':
-            return arg.abs();
+            val = arg.abs();
           default:
-            return arg;
+            val = arg;
         }
+        if (fnPower != null && val.isFinite) {
+          if (val < 0 && fnPower != fnPower.roundToDouble()) return double.nan;
+          return math.pow(val, fnPower).toDouble();
+        }
+        return val;
       }
     }
 

@@ -59,7 +59,7 @@ void main() {
     expect(find.text('Integra3D'), findsOneWidget);
     expect(find.text('Editor'), findsOneWidget);
     expect(find.text('Solución'), findsOneWidget);
-    expect(find.text('Pasos'), findsOneWidget);
+    expect(find.text('Formulario'), findsOneWidget);
     expect(find.text('3D View'), findsOneWidget);
     expect(find.byIcon(Icons.send_rounded), findsOneWidget);
   });

@@ -70,13 +70,13 @@ class Native3DCanvasPainter extends CustomPainter {
       return ry * sinPitch + z * cosPitch;
     }
 
-    // 1. Draw XY Grid
+    // 1. Draw Extended XY Grid (Cartesian Ground Plane)
     if (showGrid) {
       final gridPaint = Paint()
-        ..color = AppColors.borderSubtle.withAlpha(90)
-        ..strokeWidth = 1.0;
+        ..color = AppColors.borderSubtle.withAlpha(60)
+        ..strokeWidth = 0.8;
 
-      const int gridLines = 5;
+      const int gridLines = 8;
       const double step = 1.0;
       for (int i = -gridLines; i <= gridLines; i++) {
         final p1 = project(i * step, -gridLines * step, 0);
@@ -89,28 +89,71 @@ class Native3DCanvasPainter extends CustomPainter {
       }
     }
 
-    // 2. Draw 3D Coordinate Axes (X = Coral Flame, Y = Lime Phosphor, Z = Neon Sky)
+    // 2. Draw Infinite 3D Coordinate Axes & Cartesian Ticks
     if (showAxes) {
       final origin = project(0, 0, 0);
-      const axisLength = 4.0;
+      const double axisSpan = 16.0; // Infinite appearance (extends beyond viewport)
 
-      // Axis X (Coral Flame / î)
-      final xEnd = project(axisLength, 0, 0);
-      final xPaint = Paint()..color = AppColors.coralFlame..strokeWidth = 2.5;
-      canvas.drawLine(origin, xEnd, xPaint);
-      _drawText(canvas, 'X (î)', xEnd + const Offset(4, -4), AppColors.coralFlame);
+      final tickPaint = Paint()
+        ..color = AppColors.borderSubtle.withAlpha(160)
+        ..strokeWidth = 1.0;
 
-      // Axis Y (Lime Phosphor / ĵ)
-      final yEnd = project(0, axisLength, 0);
-      final yPaint = Paint()..color = AppColors.limePhosphor..strokeWidth = 2.5;
-      canvas.drawLine(origin, yEnd, yPaint);
-      _drawText(canvas, 'Y (ĵ)', yEnd + const Offset(4, -4), AppColors.limePhosphor);
+      // ----------------- Eje X (Coral Flame / î) -----------------
+      final xPosEnd = project(axisSpan, 0, 0);
+      final xNegEnd = project(-axisSpan, 0, 0);
+      // Eje positivo
+      canvas.drawLine(origin, xPosEnd, Paint()..color = AppColors.coralFlame..strokeWidth = 2.2);
+      // Eje negativo
+      canvas.drawLine(origin, xNegEnd, Paint()..color = AppColors.coralFlame.withAlpha(90)..strokeWidth = 1.2);
+      _drawText(canvas, '+X (î)', xPosEnd + const Offset(4, -4), AppColors.coralFlame);
 
-      // Axis Z (Neon Sky / k̂)
-      final zEnd = project(0, 0, axisLength);
-      final zPaint = Paint()..color = AppColors.neonSky..strokeWidth = 2.8;
-      canvas.drawLine(origin, zEnd, zPaint);
-      _drawText(canvas, 'Z (k̂ Cotas)', zEnd + const Offset(4, -14), AppColors.neonSky);
+      // Ticks numéricos Eje X
+      const xTicks = [-6.0, -4.0, -2.0, 2.0, 4.0, 6.0];
+      for (final val in xTicks) {
+        final pTickA = project(val, -0.15, 0);
+        final pTickB = project(val, 0.15, 0);
+        canvas.drawLine(pTickA, pTickB, tickPaint);
+        _drawTickText(canvas, val.toInt().toString(), project(val, 0, 0) + const Offset(0, 9), AppColors.mutedGray);
+      }
+
+      // ----------------- Eje Y (Lime Phosphor / ĵ) -----------------
+      final yPosEnd = project(0, axisSpan, 0);
+      final yNegEnd = project(0, -axisSpan, 0);
+      // Eje positivo
+      canvas.drawLine(origin, yPosEnd, Paint()..color = AppColors.limePhosphor..strokeWidth = 2.2);
+      // Eje negativo
+      canvas.drawLine(origin, yNegEnd, Paint()..color = AppColors.limePhosphor.withAlpha(90)..strokeWidth = 1.2);
+      _drawText(canvas, '+Y (ĵ)', yPosEnd + const Offset(4, -4), AppColors.limePhosphor);
+
+      // Ticks numéricos Eje Y
+      const yTicks = [-6.0, -4.0, -2.0, 2.0, 4.0, 6.0];
+      for (final val in yTicks) {
+        final pTickA = project(-0.15, val, 0);
+        final pTickB = project(0.15, val, 0);
+        canvas.drawLine(pTickA, pTickB, tickPaint);
+        _drawTickText(canvas, val.toInt().toString(), project(0, val, 0) + const Offset(9, 0), AppColors.mutedGray);
+      }
+
+      // ----------------- Eje Z (Neon Sky / k̂ Cotas) -----------------
+      final zPosEnd = project(0, 0, axisSpan);
+      final zNegEnd = project(0, 0, -axisSpan);
+      // Eje positivo
+      canvas.drawLine(origin, zPosEnd, Paint()..color = AppColors.neonSky..strokeWidth = 2.4);
+      // Eje negativo
+      canvas.drawLine(origin, zNegEnd, Paint()..color = AppColors.neonSky.withAlpha(90)..strokeWidth = 1.2);
+      _drawText(canvas, '+Z (k̂)', zPosEnd + const Offset(4, -14), AppColors.neonSky);
+
+      // Ticks numéricos Eje Z
+      const zTicks = [-4.0, -2.0, 2.0, 4.0, 6.0];
+      for (final val in zTicks) {
+        final pTickA = project(0, -0.15, val);
+        final pTickB = project(0, 0.15, val);
+        canvas.drawLine(pTickA, pTickB, tickPaint);
+        _drawTickText(canvas, val.toInt().toString(), project(0, 0, val) + const Offset(10, -4), AppColors.mutedGray);
+      }
+
+      // Origen de Coordenadas (0,0,0)
+      _drawTickText(canvas, '0', origin + const Offset(-6, 6), AppColors.mutedGray);
     }
 
     if (vertices.isEmpty || indices.isEmpty) return;
@@ -246,6 +289,18 @@ class Native3DCanvasPainter extends CustomPainter {
     );
     textPainter.layout();
     textPainter.paint(canvas, position);
+  }
+
+  void _drawTickText(Canvas canvas, String text, Offset position, Color color) {
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, position - Offset(textPainter.width / 2, textPainter.height / 2));
   }
 
   @override

@@ -3,10 +3,15 @@ import '../../../calculator/domain/entities/integration_bound.dart';
 import '../../../calculator/domain/entities/multivariable_integral.dart';
 import '../../../calculator/domain/services/local_math_engine.dart';
 import '../../domain/entities/integral_solution.dart';
+import '../../domain/services/math_ai_didactic_service.dart';
 import '../../data/datasources/solver_remote_datasource.dart';
 
 final solverDataSourceProvider = Provider<SolverRemoteDataSource>((ref) {
   return SolverRemoteDataSourceImpl();
+});
+
+final mathAiDidacticServiceProvider = Provider<MathAiDidacticService>((ref) {
+  return MathAiDidacticService();
 });
 
 class SolverState {
@@ -71,10 +76,12 @@ class SolverState {
 
 class SolverNotifier extends Notifier<SolverState> {
   late final SolverRemoteDataSource _dataSource;
+  late final MathAiDidacticService _aiDidacticService;
 
   @override
   SolverState build() {
     _dataSource = ref.watch(solverDataSourceProvider);
+    _aiDidacticService = ref.watch(mathAiDidacticServiceProvider);
     // Background health check & preset sync
     Future.microtask(() => checkConnectionAndSync());
     return SolverState.initial();
@@ -191,13 +198,26 @@ class SolverNotifier extends Notifier<SolverState> {
         solution = solution.copyWithDidactic(explanation);
       }
 
+      // Hybrid Architecture: AI Didactic Enrichment guided by exact mathematical checkpoints
+      solution = await _aiDidacticService.enrichWithPedagogy(
+        integral: state.currentIntegral,
+        baseSolution: solution,
+      );
+
       state = state.copyWith(
         solutionState: AsyncData(solution),
         meshData: mesh.isNotEmpty ? mesh : LocalMathEngine.generateLocalMesh(state.currentIntegral),
       );
     } catch (e) {
       // In extreme cases, local fallback is 100% resilient
-      final fallbackSol = LocalMathEngine.solveLocal(state.currentIntegral);
+      var fallbackSol = LocalMathEngine.solveLocal(state.currentIntegral);
+      try {
+        fallbackSol = await _aiDidacticService.enrichWithPedagogy(
+          integral: state.currentIntegral,
+          baseSolution: fallbackSol,
+        );
+      } catch (_) {}
+
       final fallbackMesh = LocalMathEngine.generateLocalMesh(state.currentIntegral);
       state = state.copyWith(
         solutionState: AsyncData(fallbackSol),
