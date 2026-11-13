@@ -136,13 +136,8 @@ class IntegralExpressionTransformer {
     return expr.trim();
   }
 
-  /// Inserta multiplicación implícita entre variables algebraicas individuales (ej. x y^2 -> x * y^2, xy^2 -> x * y^2)
+  /// Inserta multiplicación implícita entre variables algebraicas individuales (ej. x y^2 -> x * y^2, xy^2 -> x * y^2, 2ax -> 2*a*x)
   static String _insertImplicitMultiplicationBetweenVariables(String expr, List<String> reserved) {
-    // Casos comunes de cálculo multivariable:
-    // x y -> x * y
-    // xy^2 -> x * y^2
-    // x y^2 -> x * y^2
-    // y x -> y * x
     String result = expr;
 
     // x y^2 -> x * y^2
@@ -161,6 +156,30 @@ class IntegralExpressionTransformer {
     result = result.replaceAllMapped(
       RegExp(r'([xyzXYZ])([xyzXYZ])\b'),
       (m) => '${m.group(1)} * ${m.group(2)}',
+    );
+
+    // Parámetros simbólicos y variables combinadas (ej: ax -> a*x, abc -> a*b*c, kR -> k*R)
+    // sin dividir palabras reservadas ni tokens seguidos de '(' (como xln(...))
+    const allReserved = {
+      'sin', 'cos', 'tan', 'sec', 'csc', 'cot',
+      'sinh', 'cosh', 'tanh', 'asin', 'acos', 'atan',
+      'arcsin', 'arccos', 'arctan', 'exp', 'ln', 'log',
+      'sqrt', 'cbrt', 'abs', 'pi', 'theta', 'phi', 'rho',
+      'oo', 'inf',
+    };
+    const singleVars = {'x', 'y', 'z', 'X', 'Y', 'Z', 'a', 'b', 'c', 'm', 'n', 'k', 'r', 'R', 'H', 'u', 'v', 'w'};
+    result = result.replaceAllMapped(
+      RegExp(r'\b([A-Za-z]{2,5})\b(?!\s*\()'),
+      (m) {
+        final token = m.group(1)!;
+        if (allReserved.contains(token.toLowerCase())) return token;
+        if (token.startsWith('d') && token.length == 2) return token; // dx, dy, dz, dr
+        final chars = token.split('');
+        if (chars.every((ch) => singleVars.contains(ch))) {
+          return chars.join('*');
+        }
+        return token;
+      },
     );
 
     return result;

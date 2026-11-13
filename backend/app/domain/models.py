@@ -3,13 +3,55 @@ Domain models for Integra3D mathematical engine.
 Implements OOP principles and Python dunder methods for mathematical representations.
 """
 
+import re
 from enum import Enum
 from typing import List, Optional, Tuple, Dict, Any
 import sympy as sp
 
 
+POSITIVE_PARAM_NAMES = ("a", "b", "c", "m", "n", "R", "H", "k")
+
+SYMPY_LOCALS: Dict[str, Any] = {
+    **{name: sp.Symbol(name, positive=True) for name in POSITIVE_PARAM_NAMES},
+    "e": sp.E,
+    "pi": sp.pi,
+    "theta": sp.Symbol("theta"),
+    "phi": sp.Symbol("phi"),
+    "rho": sp.Symbol("rho"),
+    "r": sp.Symbol("r"),
+    "x": sp.Symbol("x"),
+    "y": sp.Symbol("y"),
+    "z": sp.Symbol("z"),
+    "u": sp.Symbol("u"),
+    "v": sp.Symbol("v"),
+}
+
+
+def parse_sympy_expr(raw: str) -> sp.Expr:
+    """Normalizes casual math syntax (^ -> **, ln -> log, implicit mult) and sympifies safely."""
+    cleaned = raw.strip().replace("^", "**")
+    cleaned = re.sub(r"\bln\s*\(", "log(", cleaned)
+    # Insert implicit multiplication between digit and identifier/paren: 2ax -> 2*a*x, 2pi -> 2*pi
+    cleaned = re.sub(r"(\d)([A-Za-z(])", r"\1*\2", cleaned)
+    # Handle adjacent single-letter positive params & xyz like 2*ax -> 2*a*x, abc -> a*b*c
+    def _split_adj(match: re.Match) -> str:
+        tok = match.group(0)
+        reserved = {"sin", "cos", "tan", "cot", "sec", "csc", "asin", "acos", "atan",
+                    "sinh", "cosh", "tanh", "sqrt", "cbrt", "exp", "log", "abs",
+                    "theta", "phi", "rho", "pi"}
+        if tok.lower() in reserved:
+            return tok
+        allowed = set(POSITIVE_PARAM_NAMES) | {"x", "y", "z", "u", "v", "r"}
+        if len(tok) > 1 and all(ch in allowed for ch in tok):
+            return "*".join(list(tok))
+        return tok
+    cleaned = re.sub(r"\b[A-Za-z]+\b", _split_adj, cleaned)
+    return sp.sympify(cleaned, locals=SYMPY_LOCALS)
+
+
 class CoordinateSystem(str, Enum):
     CARTESIAN = "cartesian"      # (x, y, z)
+    POLAR = "polar"              # (r, theta) -> J = r
     CYLINDRICAL = "cylindrical"  # (r, theta, z) -> J = r
     SPHERICAL = "spherical"      # (rho, theta, phi) -> J = rho^2 * sin(phi)
 
@@ -24,10 +66,10 @@ class IntegrationBound:
         self.var_sym = sp.Symbol(self.variable_str)
         self.lower_str = lower.strip()
         self.upper_str = upper.strip()
-        
-        # Parse into SymPy expressions
-        self.lower_expr = sp.sympify(self.lower_str)
-        self.upper_expr = sp.sympify(self.upper_str)
+
+        # Parse into SymPy expressions preserving positive symbolic parameters
+        self.lower_expr = parse_sympy_expr(self.lower_str)
+        self.upper_expr = parse_sympy_expr(self.upper_str)
 
     def __repr__(self) -> str:
         return f"IntegrationBound({self.variable_str}: [{self.lower_str}, {self.upper_str}])"
@@ -50,25 +92,41 @@ class IntegrationBound:
 
 class MultivariableIntegral:
     """
-    Object-oriented representation of a double or triple integral.
-    Encapsulates integrand, integration order, coordinate system, and limits.
+    Object-oriented representation of a single, double, or triple integral,
+    plus MAT 212 geometry/physics problem metadata.
     """
     def __init__(
         self,
         integrand: str,
         bounds: List[IntegrationBound],
-        coordinate_system: CoordinateSystem = CoordinateSystem.CARTESIAN
+        coordinate_system: CoordinateSystem = CoordinateSystem.CARTESIAN,
+        problem_mode: str = "direct",
+        boundary_curves: Optional[List[str]] = None,
+        vertices_input: Optional[str] = None,
+        z_lower_expr: Optional[str] = None,
+        z_upper_expr: Optional[str] = None,
+        density_expr: Optional[str] = None,
+        uv_transform_input: Optional[str] = None,
+        preferred_order: Optional[str] = None,
     ):
         self.integrand_str = integrand.strip()
-        self.integrand_expr = sp.sympify(self.integrand_str)
+        self.integrand_expr = parse_sympy_expr(self.integrand_str)
         self.bounds = bounds
         self.coordinate_system = coordinate_system
+        self.problem_mode = problem_mode
+        self.boundary_curves = boundary_curves or []
+        self.vertices_input = vertices_input
+        self.z_lower_expr = z_lower_expr
+        self.z_upper_expr = z_upper_expr
+        self.density_expr = density_expr
+        self.uv_transform_input = uv_transform_input
+        self.preferred_order = preferred_order
         self._validate()
 
     def _validate(self) -> None:
         dim = len(self.bounds)
-        if dim not in (2, 3):
-            raise ValueError(f"Integra3D soporta integrales dobles (2D) y triples (3D). Recibido: {dim} dimensiones.")
+        if dim not in (1, 2, 3) and self.problem_mode == "direct":
+            raise ValueError(f"Integra3D soporta integrales 1D, dobles (2D) y triples (3D). Recibido: {dim} dimensiones.")
 
     @property
     def dimension(self) -> int:
@@ -79,9 +137,9 @@ class MultivariableIntegral:
         return [b.variable_str for b in self.bounds]
 
     def jacobian_factor(self) -> sp.Expr:
-        """Returns the differential volume element factor based on coordinate system."""
-        if self.coordinate_system == CoordinateSystem.CYLINDRICAL:
-            # dV = r dz dr d(theta)
+        """Returns the differential area/volume element factor based on coordinate system."""
+        if self.coordinate_system in (CoordinateSystem.POLAR, CoordinateSystem.CYLINDRICAL):
+            # dA = r dr d(theta) / dV = r dz dr d(theta)
             return sp.Symbol('r')
         elif self.coordinate_system == CoordinateSystem.SPHERICAL:
             # dV = rho^2 * sin(phi) d(rho) d(phi) d(theta)
@@ -107,7 +165,10 @@ class MultivariableIntegral:
 
     def __call__(self, **kwargs) -> float:
         """Numerically evaluate the integrand at a given point (e.g. x=1, y=2, z=3)."""
-        subs_dict = {sp.Symbol(k): v for k, v in kwargs.items()}
+        subs_dict = {}
+        for sym in self.integrand_expr.free_symbols:
+            if sym.name in kwargs:
+                subs_dict[sym] = kwargs[sym.name]
         return float(self.integrand_expr.evalf(subs=subs_dict))
 
     def __repr__(self) -> str:

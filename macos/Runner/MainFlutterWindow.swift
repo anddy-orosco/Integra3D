@@ -10,6 +10,9 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    self.minSize = NSSize(width: 900, height: 640)
+    self.title = "Integra3D - Cálculo Multivariable & Graficadora"
+
     super.awakeFromNib()
   }
 }

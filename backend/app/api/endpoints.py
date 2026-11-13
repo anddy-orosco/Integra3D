@@ -23,14 +23,22 @@ class BoundDTO(BaseModel):
 
 
 class IntegralRequestDTO(BaseModel):
-    integrand: str = Field(..., example="x * y")
-    bounds: List[BoundDTO] = Field(..., min_items=2, max_items=3)
+    integrand: str = Field("1", example="x * y")
+    bounds: List[BoundDTO] = Field(default_factory=list)
     coordinate_system: Optional[str] = Field("cartesian", example="cartesian")
+    problem_mode: Optional[str] = Field("direct", example="direct")
+    boundary_curves: Optional[List[str]] = None
+    vertices_input: Optional[str] = None
+    z_lower_expr: Optional[str] = None
+    z_upper_expr: Optional[str] = None
+    density_expr: Optional[str] = None
+    uv_transform_input: Optional[str] = None
+    preferred_order: Optional[str] = None
 
 
 def _dto_to_domain(dto: IntegralRequestDTO) -> MultivariableIntegral:
     try:
-        coord_sys = CoordinateSystem(dto.coordinate_system.lower())
+        coord_sys = CoordinateSystem((dto.coordinate_system or "cartesian").lower())
     except ValueError:
         coord_sys = CoordinateSystem.CARTESIAN
 
@@ -41,11 +49,24 @@ def _dto_to_domain(dto: IntegralRequestDTO) -> MultivariableIntegral:
             upper=b.upper
         ) for b in dto.bounds
     ]
+    if not bounds and (dto.problem_mode or "direct") != "direct":
+        bounds = [
+            IntegrationBound(variable="y", lower="0", upper="1"),
+            IntegrationBound(variable="x", lower="0", upper="1"),
+        ]
 
     return MultivariableIntegral(
         integrand=dto.integrand,
         bounds=bounds,
-        coordinate_system=coord_sys
+        coordinate_system=coord_sys,
+        problem_mode=dto.problem_mode or "direct",
+        boundary_curves=dto.boundary_curves,
+        vertices_input=dto.vertices_input,
+        z_lower_expr=dto.z_lower_expr,
+        z_upper_expr=dto.z_upper_expr,
+        density_expr=dto.density_expr,
+        uv_transform_input=dto.uv_transform_input,
+        preferred_order=dto.preferred_order,
     )
 
 
@@ -143,6 +164,57 @@ async def get_presets():
             "bounds": [
                 {"variable": "z", "lower": "r", "upper": "3"},
                 {"variable": "r", "lower": "0", "upper": "3"},
+                {"variable": "theta", "lower": "0", "upper": "2*pi"}
+            ]
+        },
+        {
+            "id": "mat212_order_reversal",
+            "name": "MAT 212: Inversión de Orden (sin y / y)",
+            "description": "Integral doble no elemental en dy: ∫_0^(pi/2) ∫_x^(pi/2) sin(y)/y dy dx",
+            "dimension": 2,
+            "integrand": "sin(y)/y",
+            "coordinate_system": "cartesian",
+            "bounds": [
+                {"variable": "y", "lower": "x", "upper": "pi/2"},
+                {"variable": "x", "lower": "0", "upper": "pi/2"}
+            ]
+        },
+        {
+            "id": "mat212_shifted_polar",
+            "name": "MAT 212: Circunferencia Desplazada Polar",
+            "description": "∫ (x^2+y^2) dA sobre x^2+y^2 <= 2ax => (3/2) pi a^4",
+            "dimension": 2,
+            "integrand": "r**2",
+            "coordinate_system": "polar",
+            "bounds": [
+                {"variable": "r", "lower": "0", "upper": "2*a*cos(theta)"},
+                {"variable": "theta", "lower": "-pi/2", "upper": "pi/2"}
+            ]
+        },
+        {
+            "id": "mat212_uv_jacobian",
+            "name": "MAT 212: Transformación Jacobiana (u,v)",
+            "description": "Área entre xy=1, xy=3, y=x, y=3x",
+            "dimension": 2,
+            "integrand": "1",
+            "coordinate_system": "cartesian",
+            "problem_mode": "region_curves",
+            "boundary_curves": ["x*y = 1", "x*y = 3", "y = x", "y = 3*x"],
+            "bounds": [
+                {"variable": "y", "lower": "x", "upper": "3*x"},
+                {"variable": "x", "lower": "0", "upper": "1"}
+            ]
+        },
+        {
+            "id": "mat212_spherical_ellipsoid",
+            "name": "MAT 212: Elipsoide Reescalado Esférico",
+            "description": "Volumen de 36z^2 + 9x^2 + 4y^2 <= 144 => 64 pi",
+            "dimension": 3,
+            "integrand": "1",
+            "coordinate_system": "spherical",
+            "bounds": [
+                {"variable": "rho", "lower": "0", "upper": "24"},
+                {"variable": "phi", "lower": "0", "upper": "pi"},
                 {"variable": "theta", "lower": "0", "upper": "2*pi"}
             ]
         }

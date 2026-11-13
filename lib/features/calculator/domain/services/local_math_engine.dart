@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import '../entities/integration_bound.dart';
 import '../entities/multivariable_integral.dart';
 import 'integral_expression_transformer.dart';
+import 'mat212_solver_service.dart';
 import 'math_expression_evaluator.dart';
 import 'symbolic_calculus_engine.dart';
 import '../../../solver/domain/entities/integral_solution.dart';
@@ -992,20 +993,107 @@ class LocalMathEngine {
         },
       ],
     },
+    {
+      'id': 'mat212_order_reversal_siny_y',
+      'name': 'MAT 212: Inversión Orden (sin y / y)',
+      'description': 'Integral no elemental ∫_0^π ∫_x^π (sin y)/y dy dx resuelta por cambio de orden',
+      'dimension': 2,
+      'integrand': 'sin(y) / y',
+      'coordinate_system': 'cartesian',
+      'bounds': [
+        {'variable': 'y', 'lower': 'x', 'upper': 'pi'},
+        {'variable': 'x', 'lower': '0', 'upper': 'pi'},
+      ],
+    },
+    {
+      'id': 'mat212_polar_shifted_circle',
+      'name': 'MAT 212: Polares (x²+y² = 2ax)',
+      'description': 'Circunferencia desplazada r = 2a cosθ con constante simbólica a',
+      'dimension': 2,
+      'integrand': 'x^2 + y^2',
+      'coordinate_system': 'cartesian',
+      'bounds': [
+        {'variable': 'y', 'lower': '-sqrt(2*a*x - x^2)', 'upper': 'sqrt(2*a*x - x^2)'},
+        {'variable': 'x', 'lower': '0', 'upper': '2*a'},
+      ],
+    },
+    {
+      'id': 'mat212_polar_cardioid',
+      'name': 'MAT 212: Cardioide r = 1 + cosθ',
+      'description': 'Área de la cardioide en coordenadas polares con Jacobiano r',
+      'dimension': 2,
+      'integrand': '1',
+      'coordinate_system': 'polar',
+      'bounds': [
+        {'variable': 'r', 'lower': '0', 'upper': '1 + cos(theta)'},
+        {'variable': 'theta', 'lower': '0', 'upper': '2*pi'},
+      ],
+    },
+    {
+      'id': 'mat212_spherical_lemon',
+      'name': 'MAT 212: Esféricas (x²+y²+z²)² = a³x',
+      'description': 'Volumen en coordenadas esféricas con constante simbólica a',
+      'dimension': 3,
+      'integrand': '1',
+      'coordinate_system': 'spherical',
+      'bounds': [
+        {'variable': 'rho', 'lower': '0', 'upper': 'a * (sin(phi)*cos(theta))^(1/3)'},
+        {'variable': 'phi', 'lower': '0', 'upper': 'pi'},
+        {'variable': 'theta', 'lower': '-pi/2', 'upper': 'pi/2'},
+      ],
+    },
+    {
+      'id': 'mat212_cylindrical_cone',
+      'name': 'MAT 212: Masa Cono Cilíndricas (k, H, R)',
+      'description': 'Integral triple simbólica con parámetros k, H y R',
+      'dimension': 3,
+      'integrand': 'k',
+      'coordinate_system': 'cylindrical',
+      'bounds': [
+        {'variable': 'z', 'lower': 'H * r / R', 'upper': 'H'},
+        {'variable': 'r', 'lower': '0', 'upper': 'R'},
+        {'variable': 'theta', 'lower': '0', 'upper': '2*pi'},
+      ],
+    },
   ];
+
+  static bool _hasSymbolicParams(MultivariableIntegral integral) {
+    final exprs = [
+      integral.integrand,
+      ...integral.bounds.map((b) => '${b.lower} ${b.upper}'),
+    ];
+    for (final s in exprs) {
+      final ast = SymbolicCalculusEngine.parse(s);
+      if (ast != null && SymbolicCalculusEngine.hasSymbolicParameters(ast)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static String toLatexPublic(MultivariableIntegral integral) => _toLatexString(integral);
 
   /// Resuelve la integral localmente reconociendo patrones o mediante integración numérica
   static IntegralSolution solveLocal(MultivariableIntegral integral) {
     final startTime = DateTime.now();
 
-    // 1. Verificar si coincide con un preset conocido (debe coincidir integrando Y límites)
+    // 0. Modo Práctica MAT 212: Regiones por Curvas/Vértices y Aplicaciones
+    if (integral.problemMode != ProblemMode.direct) {
+      final modeSol = Mat212SolverService.solveProblemMode(integral, startTime);
+      if (modeSol != null) return modeSol;
+    }
+
+    // 1. Verificar si coincide con un preset conocido (debe coincidir integrando, sistema Y límites)
     final normalizedIntegrand = _cleanExpr(integral.integrand);
     for (final preset in builtInPresets) {
       final presetBounds = (preset['bounds'] as List<dynamic>?) ?? [];
-      if (_cleanExpr(preset['integrand'] as String) == normalizedIntegrand &&
+      final presetCoord = preset['coordinate_system'] as String? ?? 'cartesian';
+      final stepsRaw = (preset['steps'] as List<dynamic>?) ?? [];
+      if (stepsRaw.isNotEmpty &&
+          _cleanExpr(preset['integrand'] as String) == normalizedIntegrand &&
           preset['dimension'] == integral.dimension &&
+          presetCoord == integral.coordinateSystem.name &&
           _boundsMatch(presetBounds, integral.bounds)) {
-        final stepsRaw = (preset['steps'] as List<dynamic>?) ?? [];
         final steps = stepsRaw
             .map((s) => SolverStep.fromJson(s as Map<String, dynamic>))
             .toList();
@@ -1031,8 +1119,15 @@ class LocalMathEngine {
           didacticSections: sections,
           regionDefinition: preset['region_definition'] as String? ?? _buildRegionDefinition(integral),
           formulasAndMethods: formulas.isNotEmpty ? formulas : defaultFormulasFor(integral),
+          domainAnalysis: _buildDefaultDomainAnalysis(integral),
         );
       }
+    }
+
+    // 1.5 Coordenadas Polares, Cilíndricas y Esféricas (aplicando Jacobiano exacto)
+    if (integral.coordinateSystem != CoordinateSystemType.cartesian) {
+      final coordSol = Mat212SolverService.solveCoordinateSystem(integral, startTime);
+      if (coordSol != null) return coordSol;
     }
 
     // 2. Solución didáctica y numérica autónoma para integrales de cualquier dimensión (1D, 2D, 3D)
@@ -1072,6 +1167,37 @@ class LocalMathEngine {
   // =========================================================================
   // SOLUCIONADORES DIDÁCTICOS POR DIMENSIÓN (1D, 2D, 3D)
   // =========================================================================
+
+  static DomainAnalysis _buildDefaultDomainAnalysis(MultivariableIntegral integral) {
+    if (integral.coordinateSystem == CoordinateSystemType.polar) {
+      return DomainAnalysis(
+        regionType: 'Polar',
+        deducedLimitsLatex: _toLatexString(integral),
+        jacobianLatex: r'J(r,\theta) = r \implies dA = r\,dr\,d\theta',
+      );
+    }
+    if (integral.coordinateSystem == CoordinateSystemType.cylindrical) {
+      return DomainAnalysis(
+        regionType: 'Cylindrical',
+        deducedLimitsLatex: _toLatexString(integral),
+        jacobianLatex: r'J(r,\theta,z) = r \implies dV = r\,dz\,dr\,d\theta',
+      );
+    }
+    if (integral.coordinateSystem == CoordinateSystemType.spherical) {
+      return DomainAnalysis(
+        regionType: 'Spherical',
+        deducedLimitsLatex: _toLatexString(integral),
+        jacobianLatex: r'J(\rho,\phi,\theta) = \rho^2\sin\phi \implies dV = \rho^2\sin\phi\,d\rho\,d\phi\,d\theta',
+      );
+    }
+    final isTypeII = integral.bounds.length >= 2 &&
+        integral.bounds[0].variable.toLowerCase() == 'x' &&
+        integral.bounds[1].variable.toLowerCase() == 'y';
+    return DomainAnalysis(
+      regionType: isTypeII ? 'Type II' : 'Type I',
+      deducedLimitsLatex: _toLatexString(integral),
+    );
+  }
 
   static String _buildRegionDefinition(MultivariableIntegral integral) {
     if (integral.bounds.isEmpty) return '';
@@ -1430,16 +1556,18 @@ class LocalMathEngine {
 
   static IntegralSolution _solve1D(MultivariableIntegral integral, DateTime startTime) {
     final bound = integral.bounds[0];
+    final hasSymParams = _hasSymbolicParams(integral);
     final approx = _simpson1DGeneral(
       integrand: integral.integrand,
       variable: bound.variable,
       lower: bound.lower,
       upper: bound.upper,
+      params: hasSymParams ? Mat212SolverService.previewParams : const {},
     );
 
     final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
 
-    if (approx.isNaN || approx.isInfinite) {
+    if (!hasSymParams && (approx.isNaN || approx.isInfinite)) {
       return _buildDivergentSolution(
         integral,
         startTime,
@@ -1457,7 +1585,7 @@ class LocalMathEngine {
     final cleanIntegrand = IntegralExpressionTransformer.toDisplayLatex(integral.integrand);
     final cleanLower = IntegralExpressionTransformer.toDisplayLatex(bound.lower);
     final cleanUpper = IntegralExpressionTransformer.toDisplayLatex(bound.upper);
-    final approxStr = isIdentical ? '0.0000' : approx.toStringAsFixed(4);
+    final approxStr = isIdentical ? '0.0000' : (approx.isFinite ? approx.toStringAsFixed(4) : '0.0000');
 
     final parsedIntegrand = SymbolicCalculusEngine.parse(integral.integrand);
     final parsedLow = SymbolicCalculusEngine.parse(bound.lower);
@@ -1479,12 +1607,14 @@ class LocalMathEngine {
       final exactDiffExpr = SymbolicCalculusEngine.simplify(
         SymAdd([subUppExpr, SymMul([SymNum.intVal(-1), subLowExpr])]),
       );
-      final exactDiffVal = exactDiffExpr.eval({});
+      final evalEnv = hasSymParams ? Mat212SolverService.previewParams : const <String, double>{};
+      final exactDiffVal = exactDiffExpr.eval(evalEnv);
+      final bool resultStillHasParams = SymbolicCalculusEngine.hasSymbolicParameters(exactDiffExpr);
       final bool symbolicMatchesApprox = isIdentical ||
-          (exactDiffVal.isFinite && (exactDiffVal - approx).abs() <= 1e-2 * math.max(1.0, approx.abs()));
+          (exactDiffVal.isFinite && approx.isFinite && (exactDiffVal - approx).abs() <= 1e-2 * math.max(1.0, approx.abs()));
       final String exactResultLatex = isIdentical
           ? '0'
-          : (symbolicMatchesApprox ? SymbolicCalculusEngine.toLatex(exactDiffExpr) : '\\approx $approxStr');
+          : ((symbolicMatchesApprox || resultStillHasParams) ? SymbolicCalculusEngine.toLatex(exactDiffExpr) : '\\approx $approxStr');
 
       final String barrowWorkLatex;
       if (isIdentical) {
@@ -1612,16 +1742,18 @@ class LocalMathEngine {
         ),
       ];
 
+      final bool resultHasSymParams = SymbolicCalculusEngine.hasSymbolicParameters(exactDiffExpr);
       return IntegralSolution(
         isSuccess: true,
         exactLatex: exactResultLatex,
-        approxNumeric: double.parse(approxStr),
+        approxNumeric: resultHasSymParams ? null : double.tryParse(approxStr),
         originalIntegralLatex: _toLatexString(integral),
         executionTimeMs: math.max(ms, 14.0),
         regionDefinition: _buildRegionDefinition(integral),
         steps: steps,
         didacticSections: sections,
         formulasAndMethods: defaultFormulasFor(integral),
+        domainAnalysis: _buildDefaultDomainAnalysis(integral),
       );
     }
 
@@ -1756,6 +1888,8 @@ class LocalMathEngine {
   }
 
   static IntegralSolution _solve2D(MultivariableIntegral integral, DateTime startTime) {
+    final hasSymParams = _hasSymbolicParams(integral);
+
     // 1. Intentar resolución analítica para integrales que requieren cambio de orden (Fubini inverso)
     final orderReversalSol = _trySolveOrderReversal2D(integral, startTime);
     if (orderReversalSol != null) return orderReversalSol;
@@ -1764,17 +1898,24 @@ class LocalMathEngine {
     final radicalCircularSol = _trySolveRadicalCircular2D(integral, startTime);
     if (radicalCircularSol != null) return radicalCircularSol;
 
-    // 3. Intentar resolución analítica exacta para polinomios en 2D con cotas lineales
-    final polySol = _trySolvePolynomial2D(integral, startTime);
-    if (polySol != null) return polySol;
+    // 2.5 Conversión automática a polares para circunferencias desplazadas (2ax) y círculos simbólicos (a^2, R^2)
+    final symPolarSol = Mat212SolverService.trySolveSymbolicPolarConversion(integral, startTime);
+    if (symPolarSol != null) return symPolarSol;
 
-    // 4. Intentar resolución analítica para monomios con cotas específicas
-    final monomialSol = _trySolveMonomial2D(integral, startTime);
-    if (monomialSol != null) return monomialSol;
+    // 3. Intentar resolución analítica exacta para polinomios en 2D con cotas lineales (solo numéricos)
+    if (!hasSymParams) {
+      final polySol = _trySolvePolynomial2D(integral, startTime);
+      if (polySol != null) return polySol;
+
+      // 4. Intentar resolución analítica para monomios con cotas específicas
+      final monomialSol = _trySolveMonomial2D(integral, startTime);
+      if (monomialSol != null) return monomialSol;
+    }
 
     final innerBound = integral.bounds[0];
     final outerBound = integral.bounds[1];
 
+    final evalParams = hasSymParams ? Mat212SolverService.previewParams : const <String, double>{};
     final approx = _simpson2DGeneral(
       integrand: integral.integrand,
       innerVar: innerBound.variable,
@@ -1784,17 +1925,10 @@ class LocalMathEngine {
       outerLower: outerBound.lower,
       outerUpper: outerBound.upper,
       n: 36,
+      params: evalParams,
     );
 
     final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
-
-    if (approx.isNaN || approx.isInfinite) {
-      return _buildDivergentSolution(
-        integral,
-        startTime,
-        'La integral doble diverge o contiene singularidades infinitas (como división por cero o asíntotas verticales) dentro de la región planar de integración.',
-      );
-    }
 
     final bool inBoundsConst = _isNumericConstBound(innerBound.lower) && _isNumericConstBound(innerBound.upper);
     final bool outBoundsConst = _isNumericConstBound(outerBound.lower) && _isNumericConstBound(outerBound.upper);
@@ -1865,7 +1999,9 @@ class LocalMathEngine {
     final inUpp = IntegralExpressionTransformer.toDisplayLatex(activeInner.upper);
     final outLow = IntegralExpressionTransformer.toDisplayLatex(activeOuter.lower);
     final outUpp = IntegralExpressionTransformer.toDisplayLatex(activeOuter.upper);
-    final approxStr = (activeInnerIdentical || outerIdentical) ? '0.0000' : approx.toStringAsFixed(4);
+    final approxStr = (activeInnerIdentical || outerIdentical)
+        ? '0.0000'
+        : (approx.isFinite ? approx.toStringAsFixed(4) : '0.0000');
 
     final parsedInLow = SymbolicCalculusEngine.parse(activeInner.lower);
     final parsedInUpp = SymbolicCalculusEngine.parse(activeInner.upper);
@@ -2009,13 +2145,15 @@ class LocalMathEngine {
             : SymbolicCalculusEngine.simplify(
                 SymAdd([subOutUppExpr, SymMul([SymNum.intVal(-1), subOutLowExpr])]),
               );
-        final finalExactVal = finalExactExpr.eval({});
+        final finalExactVal = finalExactExpr.eval(evalParams);
+        final bool resultHasSymParams = SymbolicCalculusEngine.hasSymbolicParameters(finalExactExpr);
         final bool exactMatchesApprox = outerIdentical ||
             activeInnerIdentical ||
-            (finalExactVal.isFinite && (finalExactVal - approx).abs() <= 2e-2 * math.max(1.0, approx.abs()));
+            (finalExactVal.isFinite && approx.isFinite && (finalExactVal - approx).abs() <= 2e-2 * math.max(1.0, approx.abs())) ||
+            (resultHasSymParams && finalExactVal.isFinite);
         final String finalExactLatex = outerIdentical || activeInnerIdentical
             ? '0'
-            : (exactMatchesApprox ? SymbolicCalculusEngine.toLatex(finalExactExpr) : '\\approx $approxStr');
+            : ((exactMatchesApprox || resultHasSymParams) ? SymbolicCalculusEngine.toLatex(finalExactExpr) : '\\approx $approxStr');
 
         final step4Work = outerOutcome.transformationLatex != null
             ? '${outerOutcome.transformationLatex} \\implies \\int \\left( $expandedOuterLatex \\right) d${activeOuter.variable} = $fOuterLatex'
@@ -2108,16 +2246,21 @@ class LocalMathEngine {
           ),
         ];
 
+        final bool resStillHasSym = SymbolicCalculusEngine.hasSymbolicParameters(finalExactExpr);
+        final double? outNumeric = resStillHasSym
+            ? null
+            : (finalExactVal.isFinite ? double.parse(finalExactVal.toStringAsFixed(5)) : double.tryParse(approxStr));
         return IntegralSolution(
           isSuccess: true,
           exactLatex: finalExactLatex,
-          approxNumeric: double.parse(approxStr),
+          approxNumeric: outNumeric,
           originalIntegralLatex: _toLatexString(integral),
           executionTimeMs: math.max(ms, 18.0),
           regionDefinition: _buildRegionDefinition(integral),
           steps: steps,
           didacticSections: sections,
           formulasAndMethods: defaultFormulasFor(integral),
+          domainAnalysis: _buildDefaultDomainAnalysis(activeIntegral),
         );
       } else {
         // Caso híbrido: capa interna SÍ fue 100% simbólica exacta (Pasos 1-3 idénticos a Imagen 2),
@@ -2218,6 +2361,14 @@ class LocalMathEngine {
     }
 
     // Respaldo 2D verdaderamente no elemental en la capa interna (incluso tras Fubini):
+    if (approx.isNaN || approx.isInfinite) {
+      return _buildDivergentSolution(
+        integral,
+        startTime,
+        'La integral doble diverge o contiene singularidades infinitas (como división por cero o asíntotas verticales) dentro de la región planar de integración.',
+      );
+    }
+
     // Evaluar 5 rebanadas concretas de la integral interna I(v_k) en nodos reales del eje exterior
     final double aOut = rawOutLow.isNaN ? 0.0 : rawOutLow;
     final double bOut = rawOutUpp.isNaN ? 1.0 : rawOutUpp;
@@ -2381,13 +2532,14 @@ class LocalMathEngine {
     return IntegralSolution(
       isSuccess: true,
       exactLatex: r'\approx ' + approxStr,
-      approxNumeric: double.parse(approxStr),
+      approxNumeric: double.tryParse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
       executionTimeMs: math.max(ms, 18.0),
       regionDefinition: _buildRegionDefinition(integral),
       steps: steps,
       didacticSections: sections,
       formulasAndMethods: defaultFormulasFor(integral),
+      domainAnalysis: _buildDefaultDomainAnalysis(activeIntegral),
     );
   }
 
@@ -2395,6 +2547,8 @@ class LocalMathEngine {
     MultivariableIntegral integral,
     SymExpr parsedIntegrand,
   ) {
+    final mat212Reversal = Mat212SolverService.tryGeneralFubiniReversal(integral, parsedIntegrand);
+    if (mat212Reversal != null) return mat212Reversal;
     final inner = integral.bounds[0];
     final outer = integral.bounds[1];
     final bool inConst = _isNumericConstBound(inner.lower) && _isNumericConstBound(inner.upper);
@@ -3787,9 +3941,14 @@ class LocalMathEngine {
   }
 
   static IntegralSolution _solve3D(MultivariableIntegral integral, DateTime startTime) {
+    final transformSol = Mat212SolverService.trySolve3DCartesianTransform(integral, startTime);
+    if (transformSol != null) return transformSol;
+
     final innerBound = integral.bounds[0]; // ej: z
     final midBound = integral.bounds[1];   // ej: y
     final outerBound = integral.bounds[2]; // ej: x
+    final hasSymParams = _hasSymbolicParams(integral);
+    final evalParams = hasSymParams ? Mat212SolverService.previewParams : const <String, double>{};
 
     final approx = _simpson3DGeneral(
       integrand: integral.integrand,
@@ -3803,11 +3962,12 @@ class LocalMathEngine {
       outerLower: outerBound.lower,
       outerUpper: outerBound.upper,
       n: 22,
+      params: evalParams,
     );
 
     final ms = DateTime.now().difference(startTime).inMilliseconds.toDouble();
 
-    if (approx.isNaN || approx.isInfinite) {
+    if (!hasSymParams && (approx.isNaN || approx.isInfinite)) {
       return _buildDivergentSolution(
         integral,
         startTime,
@@ -3837,7 +3997,7 @@ class LocalMathEngine {
     final midUpp = IntegralExpressionTransformer.toDisplayLatex(midBound.upper);
     final outLow = IntegralExpressionTransformer.toDisplayLatex(outerBound.lower);
     final outUpp = IntegralExpressionTransformer.toDisplayLatex(outerBound.upper);
-    final approxStr = approx.toStringAsFixed(4);
+    final approxStr = approx.isFinite ? approx.toStringAsFixed(4) : '0.0000';
 
     final parsedIntegrand = SymbolicCalculusEngine.parse(integral.integrand);
     final parsedInLow = SymbolicCalculusEngine.parse(innerBound.lower);
@@ -3952,6 +4112,7 @@ class LocalMathEngine {
         : '\\int_{$outLow}^{$outUpp} \\left( $outerIntegrandDisplay \\right) d${outerBound.variable} \\approx $approxStr';
     String finalSimplifiedLatex = approxStr;
 
+    bool resultStillHasParams = false;
     if (hasSymOuter) {
       final fOut = outerOutcome.antiderivative!;
       outerAntiderivLatex = outerOutcome.antiderivativeLatex;
@@ -3960,8 +4121,9 @@ class LocalMathEngine {
       final diffOut = SymbolicCalculusEngine.simplify(
         SymAdd([sOutUpp, SymMul([SymNum.intVal(-1), sOutLow])]),
       );
-      final diffVal = diffOut.eval({});
-      if (diffVal.isFinite && (diffVal - approx).abs() <= 5e-2 * math.max(1.0, approx.abs())) {
+      resultStillHasParams = SymbolicCalculusEngine.hasSymbolicParameters(diffOut);
+      final diffVal = diffOut.eval(evalParams);
+      if (resultStillHasParams || (diffVal.isFinite && approx.isFinite && (diffVal - approx).abs() <= 5e-2 * math.max(1.0, approx.abs()))) {
         finalExactLatex = SymbolicCalculusEngine.toLatex(diffOut);
         finalSimplifiedLatex = finalExactLatex;
         final sOutUppL = SymbolicCalculusEngine.toLatex(sOutUpp);
@@ -3970,6 +4132,12 @@ class LocalMathEngine {
             ? '-\\left(\\left($sOutLowL\\right) - \\left($sOutUppL\\right)\\right) = $finalExactLatex'
             : '\\left($sOutUppL\\right) - \\left($sOutLowL\\right) = $finalExactLatex';
       }
+    } else if (approx.isNaN || approx.isInfinite) {
+      return _buildDivergentSolution(
+        integral,
+        startTime,
+        'La integral triple diverge o no admite evaluación simbólica o numérica convergente.',
+      );
     }
 
     final steps = <SolverStep>[
@@ -4132,13 +4300,14 @@ class LocalMathEngine {
     return IntegralSolution(
       isSuccess: true,
       exactLatex: finalExactLatex,
-      approxNumeric: double.parse(approxStr),
+      approxNumeric: resultStillHasParams ? null : double.tryParse(approxStr),
       originalIntegralLatex: _toLatexString(integral),
       executionTimeMs: math.max(ms, 22.0),
       regionDefinition: _buildRegionDefinition(integral),
       steps: steps,
       didacticSections: sections,
       formulasAndMethods: defaultFormulasFor(integral),
+      domainAnalysis: _buildDefaultDomainAnalysis(integral),
     );
   }
 
@@ -4195,6 +4364,28 @@ class LocalMathEngine {
     );
   }
 
+  static double _evalOrRemovableLimit(
+    double Function(double coord) evalAt, {
+    required double edge,
+    required double dir,
+    required double span,
+  }) {
+    final direct = evalAt(edge);
+    if (!direct.isNaN && !direct.isInfinite) return direct;
+    final eps1 = span * 1e-4;
+    final eps2 = span * 1e-5;
+    final f1 = evalAt(edge + dir * eps1);
+    final f2 = evalAt(edge + dir * eps2);
+    if (f1.isNaN || f1.isInfinite || f2.isNaN || f2.isInfinite) {
+      return double.nan;
+    }
+    if (f1.abs() > 1e4 || f2.abs() > 1e4) return double.nan;
+    if ((f2 - f1).abs() > 1e-2 * math.max<double>(1.0, f1.abs())) {
+      return double.nan;
+    }
+    return f2;
+  }
+
   /// Cuadratura 1D compuesta de Simpson con soporte riguroso de límites invertidos
   static double _simpson1DGeneral({
     required String integrand,
@@ -4202,11 +4393,12 @@ class LocalMathEngine {
     required String lower,
     required String upper,
     int n = 80,
+    Map<String, double> params = const {},
   }) {
     if (n % 2 != 0) n++;
     final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
-    final rawA = MathExpressionEvaluator.evaluate(lower);
-    final rawB = MathExpressionEvaluator.evaluate(upper);
+    final rawA = MathExpressionEvaluator.evaluate(lower, params: params);
+    final rawB = MathExpressionEvaluator.evaluate(upper, params: params);
 
     if (rawA.isNaN || rawB.isNaN) return double.nan;
     if (rawA == rawB) return 0.0;
@@ -4223,12 +4415,22 @@ class LocalMathEngine {
       final val = a + i * h;
       final w = (i == 0 || i == n) ? 1.0 : ((i % 2 == 1) ? 4.0 : 2.0);
 
-      final fVal = MathExpressionEvaluator.evaluate(
-        normalized,
-        x: variable == 'x' ? val : 0.0,
-        y: variable == 'y' ? val : 0.0,
-        z: variable == 'z' ? val : 0.0,
-      );
+      double evalAt(double c) => MathExpressionEvaluator.evaluate(
+            normalized,
+            x: variable == 'x' ? c : 0.0,
+            y: variable == 'y' ? c : 0.0,
+            z: variable == 'z' ? c : 0.0,
+            params: params,
+          );
+
+      final fVal = (i == 0 || i == n)
+          ? _evalOrRemovableLimit(
+              evalAt,
+              edge: val,
+              dir: i == 0 ? 1.0 : -1.0,
+              span: b - a,
+            )
+          : evalAt(val);
 
       if (fVal.isNaN || fVal.isInfinite) return double.nan;
       total += w * fVal;
@@ -4251,11 +4453,12 @@ class LocalMathEngine {
     required String outerLower,
     required String outerUpper,
     int n = 22,
+    Map<String, double> params = const {},
   }) {
     if (n % 2 != 0) n++;
     final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
-    final rawOutMin = MathExpressionEvaluator.evaluate(outerLower);
-    final rawOutMax = MathExpressionEvaluator.evaluate(outerUpper);
+    final rawOutMin = MathExpressionEvaluator.evaluate(outerLower, params: params);
+    final rawOutMax = MathExpressionEvaluator.evaluate(outerUpper, params: params);
 
     if (rawOutMin.isNaN || rawOutMax.isNaN) return double.nan;
     if (rawOutMin == rawOutMax) return 0.0;
@@ -4277,12 +4480,14 @@ class LocalMathEngine {
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
         z: outerVar == 'z' ? outVal : 0.0,
+        params: params,
       );
       final rawMMax = MathExpressionEvaluator.evaluate(
         midUpper,
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
         z: outerVar == 'z' ? outVal : 0.0,
+        params: params,
       );
 
       if (rawMMin.isNaN || rawMMax.isNaN) continue;
@@ -4315,12 +4520,14 @@ class LocalMathEngine {
           x: xVal,
           y: yVal,
           z: zVal,
+          params: params,
         );
         final rawInMax = MathExpressionEvaluator.evaluate(
           innerUpper,
           x: xVal,
           y: yVal,
           z: zVal,
+          params: params,
         );
 
         if (rawInMin.isNaN || rawInMax.isNaN) continue;
@@ -4348,6 +4555,7 @@ class LocalMathEngine {
             x: xVal,
             y: yVal,
             z: zVal,
+            params: params,
           );
 
           if (fVal.isNaN || fVal.isInfinite) return double.nan;
@@ -4366,99 +4574,9 @@ class LocalMathEngine {
     return result.abs() < 1e-12 ? 0.0 : result;
   }
 
-  /// Genera la geometría 3D nativa (vértices y caras) para el renderizador Flutter
+  /// Genera la geometría 3D nativa (vértices, superficies sup/inf y proyección R en z=0) para el renderizador Flutter
   static Map<String, dynamic> generateLocalMesh(MultivariableIntegral integral, {int resolution = 26}) {
-    final cleaned = _cleanExpr(integral.integrand);
-
-    double Function(double, double) fn;
-
-    if (cleaned.contains('4-x^2-y^2') || cleaned.contains('4-x**2-y**2')) {
-      fn = (x, y) {
-        final r2 = x * x + y * y;
-        return (r2 <= 4.0) ? (4.0 - r2) : 0.0;
-      };
-    } else if (cleaned.contains('xy^2') || cleaned.contains('x*y^2') || cleaned.contains('xy**2')) {
-      fn = (x, y) => (x * y * y) * 0.15; // Escala suave para proyección 3D
-    } else if (cleaned.contains('x^2-y^2') || cleaned.contains('x**2-y**2')) {
-      fn = (x, y) => (x * x - y * y) * 0.5;
-    } else if (cleaned.contains('exp')) {
-      fn = (x, y) => 3.0 * math.exp(-(x * x + y * y));
-    } else if (cleaned.contains('sqrt(9-x^2-y^2)') || cleaned.contains('sqrt(9-x**2-y**2)')) {
-      fn = (x, y) {
-        final r2 = x * x + y * y;
-        return (r2 <= 9.0) ? math.sqrt(9.0 - r2) : 0.0;
-      };
-    } else if (integral.dimension == 3) {
-      // Tetraedro: plano z = 1 - x - y para x+y <= 1, x,y >= 0
-      fn = (x, y) {
-        if (x >= 0 && y >= 0 && (x + y) <= 1.0) {
-          return 1.0 - x - y;
-        }
-        return 0.0;
-      };
-    } else {
-      fn = (x, y) {
-        final v = MathExpressionEvaluator.evaluate(integral.integrand, x: x, y: y);
-        if (v.isNaN || v.isInfinite) return 0.0;
-        return v.clamp(-12.0, 12.0);
-      };
-    }
-
-    final double xMin = -2.5;
-    final double xMax = 2.5;
-    final double yMin = -2.5;
-    final double yMax = 2.5;
-
-    final List<double> vertices = [];
-    final List<int> indices = [];
-    final Map<String, int> grid = {};
-    int count = 0;
-
-    for (int i = 0; i <= resolution; i++) {
-      final x = xMin + (xMax - xMin) * (i / resolution);
-      for (int j = 0; j <= resolution; j++) {
-        final y = yMin + (yMax - yMin) * (j / resolution);
-        double z;
-        try {
-          z = fn(x, y);
-          if (z.isNaN || z.isInfinite) z = 0.0;
-        } catch (_) {
-          z = 0.0;
-        }
-        vertices.addAll([x, y, z]);
-        grid['$i,$j'] = count;
-        count++;
-      }
-    }
-
-    for (int i = 0; i < resolution; i++) {
-      for (int j = 0; j < resolution; j++) {
-        final p0 = grid['$i,$j'];
-        final p1 = grid['${i + 1},$j'];
-        final p2 = grid['$i,${j + 1}'];
-        final p3 = grid['${i + 1},${j + 1}'];
-        if (p0 != null && p1 != null && p2 != null && p3 != null) {
-          indices.addAll([p0, p1, p2]);
-          indices.addAll([p1, p3, p2]);
-        }
-      }
-    }
-
-    return {
-      'type': 'surface',
-      'dimension': integral.dimension,
-      'title': 'Superficie z = ${integral.integrand}',
-      'vertices': vertices,
-      'indices': indices,
-      'bounds': {
-        'x_min': xMin,
-        'x_max': xMax,
-        'y_min': yMin,
-        'y_max': yMax,
-        'z_min': -3.0,
-        'z_max': 4.0,
-      },
-    };
+    return Mat212SolverService.generateEnhancedMesh(integral, resolution: resolution);
   }
 
   static double _simpson2DGeneral({
@@ -4470,11 +4588,12 @@ class LocalMathEngine {
     required String outerLower,
     required String outerUpper,
     int n = 36,
+    Map<String, double> params = const {},
   }) {
     if (n % 2 != 0) n++;
     final normalized = IntegralExpressionTransformer.normalizeExpression(integrand);
-    final rawOutMin = MathExpressionEvaluator.evaluate(outerLower);
-    final rawOutMax = MathExpressionEvaluator.evaluate(outerUpper);
+    final rawOutMin = MathExpressionEvaluator.evaluate(outerLower, params: params);
+    final rawOutMax = MathExpressionEvaluator.evaluate(outerUpper, params: params);
 
     if (rawOutMin.isNaN || rawOutMax.isNaN) return double.nan;
     if (rawOutMin == rawOutMax) return 0.0;
@@ -4495,11 +4614,13 @@ class LocalMathEngine {
         innerLower,
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
+        params: params,
       );
       final rawInMax = MathExpressionEvaluator.evaluate(
         innerUpper,
         x: outerVar == 'x' ? outVal : 0.0,
         y: outerVar == 'y' ? outVal : 0.0,
+        params: params,
       );
 
       if (rawInMin.isNaN || rawInMax.isNaN) continue;
@@ -4517,10 +4638,21 @@ class LocalMathEngine {
         final inVal = inMin + i * hx;
         final wx = (i == 0 || i == n) ? 1.0 : ((i % 2 == 1) ? 4.0 : 2.0);
 
-        final xVal = (innerVar == 'x') ? inVal : outVal;
-        final yVal = (innerVar == 'y') ? inVal : outVal;
+        double evalAt(double c) => MathExpressionEvaluator.evaluate(
+              normalized,
+              x: (innerVar == 'x') ? c : outVal,
+              y: (innerVar == 'y') ? c : outVal,
+              params: params,
+            );
 
-        final fVal = MathExpressionEvaluator.evaluate(normalized, x: xVal, y: yVal);
+        final fVal = (i == 0 || i == n)
+            ? _evalOrRemovableLimit(
+                evalAt,
+                edge: inVal,
+                dir: i == 0 ? 1.0 : -1.0,
+                span: inMax - inMin,
+              )
+            : evalAt(inVal);
         if (fVal.isNaN || fVal.isInfinite) return double.nan;
         innerTotal += wx * fVal;
       }

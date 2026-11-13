@@ -17,12 +17,18 @@ class MathExpressionEvaluator {
             .replaceAll('÷', '/')
             .replaceAll('−', '-');
 
-  /// Evalúa la expresión para los valores dados de x, y, z.
-  static double evaluate(String expression, {double x = 0.0, double y = 0.0, double z = 0.0}) {
+  /// Evalúa la expresión para los valores dados de x, y, z y parámetros opcionales.
+  static double evaluate(
+    String expression, {
+    double x = 0.0,
+    double y = 0.0,
+    double z = 0.0,
+    Map<String, double> params = const {},
+  }) {
     if (expression.trim().isEmpty) return 0.0;
     try {
       final evaluator = MathExpressionEvaluator(expression);
-      final result = evaluator._parse(x: x, y: y, z: z);
+      final result = evaluator._parse(x: x, y: y, z: z, params: params);
       if (result.isNaN || result.isInfinite) return result;
       return result.abs() < 1e-12 ? 0.0 : result;
     } catch (_) {
@@ -50,23 +56,33 @@ class MathExpressionEvaluator {
     return false;
   }
 
-  double _parse({required double x, required double y, required double z}) {
+  double _parse({
+    required double x,
+    required double y,
+    required double z,
+    required Map<String, double> params,
+  }) {
     _pos = -1;
     _nextChar();
-    final result = _parseExpression(x: x, y: y, z: z);
+    final result = _parseExpression(x: x, y: y, z: z, params: params);
     return result;
   }
 
   // expression = term (('+' | '-') term)*
-  double _parseExpression({required double x, required double y, required double z}) {
-    double v = _parseTerm(x: x, y: y, z: z);
+  double _parseExpression({
+    required double x,
+    required double y,
+    required double z,
+    required Map<String, double> params,
+  }) {
+    double v = _parseTerm(x: x, y: y, z: z, params: params);
     while (true) {
       if (_eat(43)) {
         // '+'
-        v += _parseTerm(x: x, y: y, z: z);
+        v += _parseTerm(x: x, y: y, z: z, params: params);
       } else if (_eat(45)) {
         // '-'
-        v -= _parseTerm(x: x, y: y, z: z);
+        v -= _parseTerm(x: x, y: y, z: z, params: params);
       } else {
         return v;
       }
@@ -74,15 +90,20 @@ class MathExpressionEvaluator {
   }
 
   // term = unary (('*' | '/') unary)*
-  double _parseTerm({required double x, required double y, required double z}) {
-    double v = _parseUnary(x: x, y: y, z: z);
+  double _parseTerm({
+    required double x,
+    required double y,
+    required double z,
+    required Map<String, double> params,
+  }) {
+    double v = _parseUnary(x: x, y: y, z: z, params: params);
     while (true) {
       if (_eat(42)) {
         // '*'
-        v *= _parseUnary(x: x, y: y, z: z);
+        v *= _parseUnary(x: x, y: y, z: z, params: params);
       } else if (_eat(47)) {
         // '/'
-        final divisor = _parseUnary(x: x, y: y, z: z);
+        final divisor = _parseUnary(x: x, y: y, z: z, params: params);
         v = (divisor != 0.0) ? v / divisor : (v == 0.0 ? double.nan : (v > 0 ? double.infinity : -double.infinity));
       } else {
         return v;
@@ -91,20 +112,36 @@ class MathExpressionEvaluator {
   }
 
   // unary = ('+' | '-') unary | power
-  double _parseUnary({required double x, required double y, required double z}) {
-    if (_eat(43)) return _parseUnary(x: x, y: y, z: z); // '+'
-    if (_eat(45)) return -_parseUnary(x: x, y: y, z: z); // '-'
-    return _parseFactor(x: x, y: y, z: z);
+  double _parseUnary({
+    required double x,
+    required double y,
+    required double z,
+    required Map<String, double> params,
+  }) {
+    if (_eat(43)) return _parseUnary(x: x, y: y, z: z, params: params); // '+'
+    if (_eat(45)) return -_parseUnary(x: x, y: y, z: z, params: params); // '-'
+    return _parseFactor(x: x, y: y, z: z, params: params);
   }
 
   // power = primary ('^' unary)?
-  double _parseFactor({required double x, required double y, required double z}) {
-    double v = _parsePrimary(x: x, y: y, z: z);
+  double _parseFactor({
+    required double x,
+    required double y,
+    required double z,
+    required Map<String, double> params,
+  }) {
+    double v = _parsePrimary(x: x, y: y, z: z, params: params);
     if (_eat(94)) {
       // '^'
-      final exponent = _parseUnary(x: x, y: y, z: z);
+      final exponent = _parseUnary(x: x, y: y, z: z, params: params);
       if (v < 0 && exponent != exponent.roundToDouble()) {
-        v = double.nan; // Indefinido en reales para potencias fraccionarias de negativos
+        // Allow odd integer roots like (-8)^(1/3) = -2
+        final inv = 1.0 / exponent;
+        if ((inv - inv.roundToDouble()).abs() < 1e-9 && inv.round().isOdd) {
+          v = -math.pow(-v, exponent).toDouble();
+        } else {
+          v = double.nan; // Indefinido en reales para potencias fraccionarias pares de negativos
+        }
       } else {
         v = math.pow(v, exponent).toDouble();
       }
@@ -113,12 +150,17 @@ class MathExpressionEvaluator {
   }
 
   // primary = number | variable | function '(' expression ')' | '(' expression ')'
-  double _parsePrimary({required double x, required double y, required double z}) {
+  double _parsePrimary({
+    required double x,
+    required double y,
+    required double z,
+    required Map<String, double> params,
+  }) {
     final startPos = _pos;
 
     if (_eat(40)) {
       // '('
-      final v = _parseExpression(x: x, y: y, z: z);
+      final v = _parseExpression(x: x, y: y, z: z, params: params);
       _eat(41); // ')'
       return v;
     }
@@ -136,31 +178,47 @@ class MathExpressionEvaluator {
       while ((_ch >= 97 && _ch <= 122) || (_ch >= 65 && _ch <= 90) || (_ch >= 48 && _ch <= 57)) {
         _nextChar();
       }
-      final name = _input.substring(startPos, _pos).toLowerCase();
+      final rawName = _input.substring(startPos, _pos);
+      final name = rawName.toLowerCase();
 
-      // Variables
-      if (name == 'x') return x;
-      if (name == 'y') return y;
-      if (name == 'z') return z;
-      if (name == 'pi') return math.pi;
-      if (name == 'e') return math.e;
+      const knownFns = {
+        'sqrt', 'cbrt', 'sin', 'cos', 'tan', 'sec', 'csc', 'cot',
+        'sinh', 'cosh', 'tanh', 'asin', 'arcsin', 'acos', 'arccos',
+        'atan', 'arctan', 'exp', 'ln', 'log', 'abs',
+      };
+
+      // Si NO es una función conocida, retornar inmediatamente como variable / constante
+      if (!knownFns.contains(name)) {
+        if (params.containsKey(rawName)) return params[rawName]!;
+        if (name == 'x') return x;
+        if (name == 'y') return y;
+        if (name == 'z') return z;
+        if (params.containsKey(name)) return params[name]!;
+        if (name == 'pi') return math.pi;
+        if (name == 'e') return math.e;
+        if (rawName == 'R') return 2.0;
+        if (rawName == 'H') return 3.0;
+        return 1.0;
+      }
 
       // Potencia directa en notación función^k(arg), ej. cos^2(x)
       double? fnPower;
       if (_eat(94)) {
-        fnPower = _parseUnary(x: x, y: y, z: z);
+        fnPower = _parseUnary(x: x, y: y, z: z, params: params);
       }
 
       // Funciones
       if (_eat(40)) {
         // '('
-        final arg = _parseExpression(x: x, y: y, z: z);
+        final arg = _parseExpression(x: x, y: y, z: z, params: params);
         _eat(41); // ')'
 
         double val;
         switch (name) {
           case 'sqrt':
             val = arg >= 0 ? math.sqrt(arg) : double.nan;
+          case 'cbrt':
+            val = arg < 0 ? -math.pow(-arg, 1.0 / 3.0).toDouble() : math.pow(arg, 1.0 / 3.0).toDouble();
           case 'sin':
             val = math.sin(arg);
           case 'cos':
@@ -209,6 +267,15 @@ class MathExpressionEvaluator {
         }
         return val;
       }
+      // Fallback variable if not a function call
+      if (params.containsKey(rawName)) return params[rawName]!;
+      if (params.containsKey(name)) return params[name]!;
+      if (name == 'x') return x;
+      if (name == 'y') return y;
+      if (name == 'z') return z;
+      if (name == 'pi') return math.pi;
+      if (name == 'e') return math.e;
+      return 1.0;
     }
 
     return 0.0;

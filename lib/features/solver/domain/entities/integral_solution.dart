@@ -115,6 +115,65 @@ class FormulaMethodCard {
   }
 }
 
+class DomainAnalysis {
+  final String regionType; // "Type I", "Type II", "Polar", "UV_Jacobian", "Cylindrical", "Spherical"
+  final List<Map<String, String>> intersectionPoints;
+  final String deducedLimitsLatex;
+  final String? jacobianLatex;
+  final List<String> boundaryCurves;
+  final String? alternateOrderLatex;
+  final String? uvTransformSummary;
+  final Map<String, dynamic>? uvData;
+
+  const DomainAnalysis({
+    required this.regionType,
+    this.intersectionPoints = const [],
+    this.deducedLimitsLatex = '',
+    this.jacobianLatex,
+    this.boundaryCurves = const [],
+    this.alternateOrderLatex,
+    this.uvTransformSummary,
+    this.uvData,
+  });
+
+  factory DomainAnalysis.fromJson(Map<String, dynamic> json) {
+    final rawPts = json['intersection_points'] as List<dynamic>? ?? [];
+    final pts = rawPts
+        .whereType<Map>()
+        .map((m) => m.map((k, v) => MapEntry(k.toString(), v?.toString() ?? '')))
+        .toList();
+
+    final rawCurves = json['boundary_curves'] as List<dynamic>? ?? [];
+    final curves = rawCurves.map((c) => c.toString()).toList();
+
+    return DomainAnalysis(
+      regionType: json['region_type'] as String? ?? 'Type I',
+      intersectionPoints: pts,
+      deducedLimitsLatex: json['deduced_limits_latex'] as String? ?? '',
+      jacobianLatex: json['jacobian_latex'] as String?,
+      boundaryCurves: curves,
+      alternateOrderLatex: json['alternate_order_latex'] as String?,
+      uvTransformSummary: json['uv_transform_summary'] as String?,
+      uvData: json['uv_data'] is Map<String, dynamic>
+          ? json['uv_data'] as Map<String, dynamic>
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'region_type': regionType,
+      'intersection_points': intersectionPoints,
+      'deduced_limits_latex': deducedLimitsLatex,
+      if (jacobianLatex != null) 'jacobian_latex': jacobianLatex,
+      if (boundaryCurves.isNotEmpty) 'boundary_curves': boundaryCurves,
+      if (alternateOrderLatex != null) 'alternate_order_latex': alternateOrderLatex,
+      if (uvTransformSummary != null) 'uv_transform_summary': uvTransformSummary,
+      if (uvData != null) 'uv_data': uvData,
+    };
+  }
+}
+
 class IntegralSolution {
   final bool isSuccess;
   final String exactLatex;
@@ -128,6 +187,8 @@ class IntegralSolution {
   final String? aiProvider;
   final String? aiStatus;
   final List<FormulaMethodCard>? formulasAndMethods;
+  final DomainAnalysis? domainAnalysis;
+  final Map<String, dynamic>? applicationSummary;
 
   const IntegralSolution({
     required this.isSuccess,
@@ -142,6 +203,8 @@ class IntegralSolution {
     this.aiProvider,
     this.aiStatus,
     this.formulasAndMethods,
+    this.domainAnalysis,
+    this.applicationSummary,
   });
 
   factory IntegralSolution.fromJson(Map<String, dynamic> json) {
@@ -155,6 +218,14 @@ class IntegralSolution {
     final formulas = formulasJson
         .map((e) => FormulaMethodCard.fromJson(e as Map<String, dynamic>))
         .toList();
+
+    final rawDomain = json['domain_analysis'];
+    final domainAnalysis = rawDomain is Map<String, dynamic>
+        ? DomainAnalysis.fromJson(rawDomain)
+        : null;
+
+    final rawAppSummary = json['application_summary'];
+    final appSummary = rawAppSummary is Map<String, dynamic> ? rawAppSummary : null;
 
     return IntegralSolution(
       isSuccess: json['is_success'] as bool? ?? false,
@@ -170,6 +241,8 @@ class IntegralSolution {
       aiProvider: json['ai_provider'] as String?,
       aiStatus: json['ai_status'] as String?,
       formulasAndMethods: formulas.isNotEmpty ? formulas : null,
+      domainAnalysis: domainAnalysis,
+      applicationSummary: appSummary,
     );
   }
 
@@ -186,6 +259,8 @@ class IntegralSolution {
     String? aiProvider,
     String? aiStatus,
     List<FormulaMethodCard>? formulasAndMethods,
+    DomainAnalysis? domainAnalysis,
+    Map<String, dynamic>? applicationSummary,
   }) {
     return IntegralSolution(
       isSuccess: isSuccess ?? this.isSuccess,
@@ -200,6 +275,8 @@ class IntegralSolution {
       aiProvider: aiProvider ?? this.aiProvider,
       aiStatus: aiStatus ?? this.aiStatus,
       formulasAndMethods: formulasAndMethods ?? this.formulasAndMethods,
+      domainAnalysis: domainAnalysis ?? this.domainAnalysis,
+      applicationSummary: applicationSummary ?? this.applicationSummary,
     );
   }
 

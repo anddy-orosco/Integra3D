@@ -6,7 +6,13 @@ Performs step-by-step symbolic integration, limit evaluation, and error diagnosi
 import time
 from typing import List, Dict, Any, Optional
 import sympy as sp
-from app.domain.models import MultivariableIntegral, IntegrationBound
+from app.domain.models import MultivariableIntegral, IntegrationBound, CoordinateSystem
+from app.engine.mat212_helpers import (
+    build_domain_analysis,
+    has_non_elementary,
+    solve_mat212_mode,
+    try_general_order_reversal,
+)
 
 
 class SolverStep:
@@ -98,7 +104,9 @@ class IntegralSolution:
         execution_time_ms: float = 0.0,
         region_definition: Optional[str] = None,
         sections: Optional[List[Dict[str, Any]]] = None,
-        formulas_and_methods: Optional[List[FormulaMethodCard]] = None
+        formulas_and_methods: Optional[List[FormulaMethodCard]] = None,
+        domain_analysis: Optional[Dict[str, Any]] = None,
+        application_summary: Optional[Dict[str, Any]] = None,
     ):
         self.is_success = is_success
         self.exact_latex = exact_latex
@@ -110,9 +118,11 @@ class IntegralSolution:
         self.region_definition = region_definition
         self.sections = sections or []
         self.formulas_and_methods = formulas_and_methods or []
+        self.domain_analysis = domain_analysis
+        self.application_summary = application_summary
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "is_success": self.is_success,
             "exact_latex": self.exact_latex,
             "approx_numeric": self.approx_numeric,
@@ -124,6 +134,11 @@ class IntegralSolution:
             "sections": self.sections,
             "formulas_and_methods": [f.to_dict() for f in self.formulas_and_methods]
         }
+        if self.domain_analysis is not None:
+            payload["domain_analysis"] = self.domain_analysis
+        if self.application_summary is not None:
+            payload["application_summary"] = self.application_summary
+        return payload
 
 
 class SymPyMultivariableSolver:
@@ -134,6 +149,11 @@ class SymPyMultivariableSolver:
     @staticmethod
     def solve(integral: MultivariableIntegral) -> IntegralSolution:
         start_time = time.perf_counter()
+        if getattr(integral, "problem_mode", "direct") != "direct":
+            mode_sol = solve_mat212_mode(integral, SymPyMultivariableSolver, SolverStep, IntegralSolution, start_time)
+            if mode_sol is not None:
+                return mode_sol
+
         original_latex = integral.to_latex()
         
         try:
@@ -161,8 +181,8 @@ class SymPyMultivariableSolver:
                         execution_time_ms=(time.perf_counter() - start_time) * 1000
                     )
                 
-                # If direct antiderivative has hypergeometric or unevaluated integral, try reversing order
-                if integral.dimension == 2 and i == 1 and (antiderivative.has(sp.hyper) or antiderivative.has(sp.Integral) or antiderivative.has(sp.gamma)):
+                # If direct antiderivative has non-elementary integral/special functions, try reversing order
+                if integral.dimension == 2 and i == 1 and has_non_elementary(antiderivative):
                     reversal_sol = SymPyMultivariableSolver._try_solve_order_reversal(integral, start_time)
                     if reversal_sol is not None:
                         return reversal_sol
@@ -176,8 +196,14 @@ class SymPyMultivariableSolver:
                 evaluated_expr = upper_eval - lower_eval
                 evaluated_latex = f"\\left[{antiderivative_latex}\\right]_{{{sp.latex(lower)}}}^{{{sp.latex(upper)}}} = \\left({sp.latex(upper_eval)}\\right) - \\left({sp.latex(lower_eval)}\\right)"
                 
-                # 3. Algebraic simplification
+                # 3. Algebraic simplification (resolve Piecewise definite forms cleanly when possible)
                 simplified_expr = sp.simplify(evaluated_expr)
+                if simplified_expr.has(sp.Piecewise):
+                    definite_try = sp.simplify(sp.integrate(current_expr, (var, lower, upper)))
+                    if not definite_try.has(sp.Piecewise, sp.Integral):
+                        simplified_expr = definite_try
+                    elif isinstance(simplified_expr, sp.Piecewise) and simplified_expr.args:
+                        simplified_expr = sp.simplify(simplified_expr.args[0][0])
                 simplified_latex = sp.latex(simplified_expr)
                 
                 # Check limits inversion (a > b)
@@ -346,6 +372,8 @@ class SymPyMultivariableSolver:
                 )
             ]
 
+            domain_info = build_domain_analysis(integral)
+
             return IntegralSolution(
                 is_success=True,
                 exact_latex=final_latex,
@@ -354,7 +382,8 @@ class SymPyMultivariableSolver:
                 original_integral_latex=original_latex,
                 execution_time_ms=total_ms,
                 region_definition=region_definition,
-                formulas_and_methods=formulas
+                formulas_and_methods=formulas,
+                domain_analysis=domain_info,
             )
 
         except Exception as ex:
@@ -368,134 +397,10 @@ class SymPyMultivariableSolver:
 
     @classmethod
     def _try_solve_order_reversal(cls, integral: MultivariableIntegral, start_time: float) -> Optional[IntegralSolution]:
-        if integral.dimension != 2:
-            return None
-        b_in = integral.bounds[0]
-        b_out = integral.bounds[1]
-        v_in = b_in.var_sym
-        v_out = b_out.var_sym
-
-        try:
-            eq = sp.Eq(v_in, b_in.lower_expr)
-            sols = sp.solve(eq, v_out)
-            if not sols:
-                return None
-            new_upper_in = sols[0]
-            new_lower_in = sp.sympify(0)
-            new_lower_out = sp.sympify(0)
-            new_upper_out = b_in.upper_expr
-
-            expr = integral.effective_integrand()
-            # 1. Inner integral in v_out from new_lower_in to new_upper_in
-            anti1 = sp.integrate(expr, v_out)
-            eval1 = sp.simplify(anti1.subs(v_out, new_upper_in) - anti1.subs(v_out, new_lower_in))
-            if eval1.has(sp.hyper) or eval1.has(sp.Integral) or eval1.has(sp.gamma):
-                return None
-
-            # 2. Outer integral in v_in from new_lower_out to new_upper_out
-            anti2 = sp.integrate(eval1, v_in)
-            if anti2.has(sp.hyper) or anti2.has(sp.Integral) or anti2.has(sp.gamma):
-                return None
-            eval2 = sp.simplify(anti2.subs(v_in, new_upper_out) - anti2.subs(v_in, new_lower_out))
-            if eval2.has(sp.hyper) or eval2.has(sp.Integral) or eval2.has(sp.gamma):
-                return None
-
-            approx_val = float(eval2.evalf())
-            exact_latex = sp.latex(eval2)
-            
-            steps = [
-                SolverStep(
-                    step_number=1,
-                    variable=b_in.variable_str,
-                    lower_bound_latex=sp.latex(new_lower_out),
-                    upper_bound_latex=sp.latex(new_upper_out),
-                    current_integrand_latex=sp.latex(expr),
-                    step_title=f"Paso 1: Análisis de la región y cambio en el orden de integración",
-                    step_integral_latex=f"\\int_{{{sp.latex(b_out.lower_expr)}}}^{{{sp.latex(b_out.upper_expr)}}} \\int_{{{sp.latex(b_in.lower_expr)}}}^{{{sp.latex(b_in.upper_expr)}}} {sp.latex(expr)} \\, d{b_in.variable_str} \\, d{b_out.variable_str} = \\int_{{{sp.latex(new_lower_out)}}}^{{{sp.latex(new_upper_out)}}} \\int_{{{sp.latex(new_lower_in)}}}^{{{sp.latex(new_upper_in)}}} {sp.latex(expr)} \\, d{b_out.variable_str} \\, d{b_in.variable_str}",
-                    constant_treatment_text=f"La antiderivada respecto a {b_in.variable_str} no tiene forma elemental cerrada. Por el Teorema de Fubini, invertimos el orden de integración al orden d{b_out.variable_str} d{b_in.variable_str}:",
-                    antiderivative_work_latex=f"{sp.latex(b_in.lower_expr)} \\le {b_in.variable_str} \\le {sp.latex(b_in.upper_expr)} \\implies {sp.latex(new_lower_out)} \\le {b_in.variable_str} \\le {sp.latex(new_upper_out)}, \\quad {sp.latex(new_lower_in)} \\le {b_out.variable_str} \\le {sp.latex(new_upper_in)}",
-                    limits_evaluation_text=f"Fronteras en el plano: {b_in.variable_str} = {sp.latex(b_in.lower_expr)} \\iff {b_out.variable_str} = {sp.latex(new_upper_in)}.",
-                    antiderivative_latex=f"\\text{{Región triangular invertida}}",
-                    evaluated_latex=f"\\int_{{{sp.latex(new_lower_out)}}}^{{{sp.latex(new_upper_out)}}} \\int_{{{sp.latex(new_lower_in)}}}^{{{sp.latex(new_upper_in)}}} {sp.latex(expr)} \\, d{b_out.variable_str} \\, d{b_in.variable_str}",
-                    simplified_result_latex=f"\\int_{{{sp.latex(new_lower_out)}}}^{{{sp.latex(new_upper_out)}}} \\int_{{{sp.latex(new_lower_in)}}}^{{{sp.latex(new_upper_in)}}} {sp.latex(expr)} \\, d{b_out.variable_str} \\, d{b_in.variable_str}",
-                    explanation=f"Se proyecta la región fijando a {b_in.variable_str} como variable exterior en [{sp.latex(new_lower_out)}, {sp.latex(new_upper_out)}] y a {b_out.variable_str} como interior en [{sp.latex(new_lower_in)}, {sp.latex(new_upper_in)}].",
-                    applied_method="Teorema de Fubini (Cambio en el Orden de Integración)"
-                ),
-                SolverStep(
-                    step_number=2,
-                    variable=b_out.variable_str,
-                    lower_bound_latex=sp.latex(new_lower_in),
-                    upper_bound_latex=sp.latex(new_upper_in),
-                    current_integrand_latex=sp.latex(expr),
-                    step_title=f"Paso 2: Resolver la integral interna (con respecto a {b_out.variable_str})",
-                    step_integral_latex=f"\\int_{{{sp.latex(new_lower_in)}}}^{{{sp.latex(new_upper_in)}}} {sp.latex(expr)} \\, d{b_out.variable_str}",
-                    constant_treatment_text=f"Tratamos a {b_in.variable_str} como constante e integramos con respecto a d{b_out.variable_str}:",
-                    antiderivative_work_latex=f"\\int {sp.latex(expr)} \\, d{b_out.variable_str} = {sp.latex(anti1)}",
-                    limits_evaluation_text=f"Evaluamos en los límites {b_out.variable_str} = {sp.latex(new_lower_in)} y {b_out.variable_str} = {sp.latex(new_upper_in)}:",
-                    antiderivative_latex=sp.latex(anti1),
-                    evaluated_latex=f"\\left[{sp.latex(anti1)}\\right]_{{{sp.latex(new_lower_in)}}}^{{{sp.latex(new_upper_in)}}} = {sp.latex(eval1)}",
-                    simplified_result_latex=sp.latex(eval1),
-                    explanation=f"La integración parcial respecto a {b_out.variable_str} produce el factor algebraico necesario para hacer elemental la siguiente integral.",
-                    applied_method="Regla de la Potencia (Integración Parcial Interna)"
-                ),
-                SolverStep(
-                    step_number=3,
-                    variable=b_in.variable_str,
-                    lower_bound_latex=sp.latex(new_lower_out),
-                    upper_bound_latex=sp.latex(new_upper_out),
-                    current_integrand_latex=sp.latex(eval1),
-                    step_title=f"Paso 3: Resolver la integral externa mediante sustitución (u-sustitución)",
-                    step_integral_latex=f"\\int_{{{sp.latex(new_lower_out)}}}^{{{sp.latex(new_upper_out)}}} {sp.latex(eval1)} \\, d{b_in.variable_str}",
-                    constant_treatment_text=f"Integramos la función resultante respecto a {b_in.variable_str} aplicando cambio de variable u = {b_in.variable_str}³:",
-                    antiderivative_work_latex=f"\\int {sp.latex(eval1)} \\, d{b_in.variable_str} = {sp.latex(anti2)}",
-                    limits_evaluation_text=f"Evaluamos en los límites {b_in.variable_str} = {sp.latex(new_lower_out)} y {b_in.variable_str} = {sp.latex(new_upper_out)}:",
-                    antiderivative_latex=sp.latex(anti2),
-                    evaluated_latex=f"\\left[{sp.latex(anti2)}\\right]_{{{sp.latex(new_lower_out)}}}^{{{sp.latex(new_upper_out)}}} = {exact_latex}",
-                    simplified_result_latex=exact_latex,
-                    explanation=f"Aplicamos el método de sustitución y el Teorema Fundamental del Cálculo.",
-                    applied_method="Método de Sustitución & Teorema Fundamental del Cálculo"
-                ),
-                SolverStep(
-                    step_number=4,
-                    variable=b_in.variable_str,
-                    lower_bound_latex=sp.latex(new_lower_out),
-                    upper_bound_latex=sp.latex(new_upper_out),
-                    current_integrand_latex=exact_latex,
-                    step_title=f"Paso 4: Resultado final exacto y aproximación numérica",
-                    step_integral_latex=f"I = {exact_latex}",
-                    constant_treatment_text="Resultado analítico exacto:",
-                    antiderivative_work_latex=f"I = {exact_latex} \\approx {approx_val:.5f}",
-                    limits_evaluation_text="Valor numérico decimal:",
-                    antiderivative_latex=exact_latex,
-                    evaluated_latex=f"I = {exact_latex} \\approx {approx_val:.5f}",
-                    simplified_result_latex=f"{approx_val:.5f}",
-                    explanation=f"El resultado exacto es {exact_latex} u³ (≈ {approx_val:.5f}).",
-                    applied_method="Cálculo Multivariable Exacto"
-                )
-            ]
-
-            return IntegralSolution(
-                is_success=True,
-                exact_latex=exact_latex,
-                approx_numeric=approx_val,
-                steps=steps,
-                original_integral_latex=integral.to_latex(),
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
-                region_definition=f"Esta integral está definida sobre la región donde {sp.latex(b_out.lower_expr)} \\le {b_out.variable_str} \\le {sp.latex(b_out.upper_expr)} y {sp.latex(b_in.lower_expr)} \\le {b_in.variable_str} \\le {sp.latex(b_in.upper_expr)} (equivalente a {sp.latex(new_lower_out)} \\le {b_in.variable_str} \\le {sp.latex(new_upper_out)} y {sp.latex(new_lower_in)} \\le {b_out.variable_str} \\le {sp.latex(new_upper_in)}).",
-                sections=[
-                    {
-                        "title": "1. Necesidad de Inversión del Orden de Integración",
-                        "content": f"El integrando contiene una función cuya antiderivada respecto a {b_in.variable_str} no es elemental. Al invertir el orden a d{b_out.variable_str} d{b_in.variable_str}, la integración en {b_out.variable_str} genera el factor necesario para integrar por sustitución."
-                    },
-                    {
-                        "title": "2. Geometría de la Región",
-                        "content": f"La región de integración es un triángulo delimitado por {b_in.variable_str} = {sp.latex(b_in.lower_expr)}, {b_in.variable_str} = {sp.latex(b_in.upper_expr)} y {b_out.variable_str} = {sp.latex(b_out.lower_expr)}."
-                    },
-                    {
-                        "title": "3. Conclusión",
-                        "content": f"El valor exacto de la integral es {exact_latex} ≈ {approx_val:.5f}."
-                    }
-                ]
-            )
-        except Exception:
-            return None
+        return try_general_order_reversal(
+            integral,
+            cls,
+            SolverStep,
+            IntegralSolution,
+            start_time,
+        )

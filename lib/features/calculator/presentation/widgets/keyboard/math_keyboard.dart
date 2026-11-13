@@ -185,12 +185,13 @@ class _MathwayKeyboardState extends State<MathwayKeyboard> {
     MathwayKey(label: 'θ', insertText: 'theta', isSpecialGlyph: true),
     MathwayKey(label: 'φ', insertText: 'phi', isSpecialGlyph: true),
     MathwayKey(label: 'ρ', insertText: 'rho', isSpecialGlyph: true),
-    MathwayKey(label: 'u', insertText: 'u', isSpecialGlyph: true),
-    MathwayKey(label: 'v', insertText: 'v', isSpecialGlyph: true),
-    MathwayKey(label: 'w', insertText: 'w', isSpecialGlyph: true),
+    MathwayKey(label: 'a', insertText: 'a', isSpecialGlyph: true),
+    MathwayKey(label: 'b', insertText: 'b', isSpecialGlyph: true),
+    MathwayKey(label: 'c', insertText: 'c', isSpecialGlyph: true),
     MathwayKey(label: 'R', insertText: 'R', isSpecialGlyph: true),
+    MathwayKey(label: 'H', insertText: 'H', isSpecialGlyph: true),
+    MathwayKey(label: 'k', insertText: 'k', isSpecialGlyph: true),
     MathwayKey(label: 'e^{-(x²+y²)}', insertText: 'exp(-(x^2 + y^2))', flex: 2),
-    MathwayKey(label: 'xy²', insertText: 'x * y^2', flex: 2),
   ];
 
   static const List<MathwayKey> p1Row5 = [

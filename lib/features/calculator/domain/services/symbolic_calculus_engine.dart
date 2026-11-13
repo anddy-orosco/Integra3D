@@ -195,8 +195,13 @@ class SymVar extends SymExpr {
   final String name;
   const SymVar(this.name);
 
+  static String canonicalName(String raw) {
+    if (raw == 'R' || raw == 'H') return raw;
+    return raw.toLowerCase();
+  }
+
   @override
-  bool dependsOn(String variable) => name == variable.toLowerCase();
+  bool dependsOn(String variable) => name == canonicalName(variable);
 
   @override
   Set<String> variables() => {name};
@@ -453,8 +458,40 @@ class SymbolicCalculusEngine {
 
   // ==================== EVALUACIÓN & SUSTITUCIÓN ====================
 
+  static const Set<String> positiveSymbolicConstants = {
+    'a', 'b', 'c', 'm', 'n', 'R', 'H', 'k', 'r', 'rho',
+  };
+
+  static const Set<String> symbolicParameterNames = {
+    'a', 'b', 'c', 'm', 'n', 'R', 'H', 'k',
+  };
+
+  static bool hasSymbolicParameters(SymExpr e) {
+    return e.variables().any((v) => symbolicParameterNames.contains(v));
+  }
+
+  static Map<String, double> defaultParamEnv(Set<String> vars) {
+    const fixed = {
+      'a': 1.37,
+      'b': 1.73,
+      'c': 2.11,
+      'm': 1.5,
+      'n': 2.0,
+      'R': 2.0,
+      'H': 3.0,
+      'k': 1.25,
+    };
+    const fallback = [1.23, 0.87, 0.59, 1.41, 0.93];
+    final env = <String, double>{};
+    int idx = 0;
+    for (final v in vars) {
+      env[v] = fixed[v] ?? fallback[idx++ % fallback.length];
+    }
+    return env;
+  }
+
   static SymExpr substitute(SymExpr expr, String variable, SymExpr replacement) {
-    final v = variable.toLowerCase();
+    final v = SymVar.canonicalName(variable);
     SymExpr walk(SymExpr node) {
       switch (node) {
         case SymVar(:final name):
@@ -519,9 +556,42 @@ class SymbolicCalculusEngine {
               return SymNum(SymRat(sp, sq));
             }
           }
+          // sqrt(a^2) -> a for positive symbolic parameters
+          if (sa is SymPow && sa.exp is SymNum && (sa.exp as SymNum).rat.isInt && (sa.exp as SymNum).rat.p == 2) {
+            if (_isDefinitelyPositive(sa.base)) {
+              return sa.base;
+            }
+          }
+          if (sa is SymMul) {
+            final posFactors = <SymExpr>[];
+            final remFactors = <SymExpr>[];
+            for (final f in sa.factors) {
+              if (f is SymNum && f.rat.p > 0) {
+                final sp = math.sqrt(f.rat.p.toDouble()).round();
+                final sq = math.sqrt(f.rat.q.toDouble()).round();
+                if (sp * sp == f.rat.p && sq * sq == f.rat.q) {
+                  posFactors.add(SymNum(SymRat(sp, sq)));
+                  continue;
+                }
+              } else if (f is SymPow && f.exp is SymNum && (f.exp as SymNum).rat.isInt && (f.exp as SymNum).rat.p % 2 == 0 && _isDefinitelyPositive(f.base)) {
+                final halfP = (f.exp as SymNum).rat.p ~/ 2;
+                posFactors.add(halfP == 1 ? f.base : SymPow(f.base, SymNum.intVal(halfP)));
+                continue;
+              }
+              remFactors.add(f);
+            }
+            if (posFactors.isNotEmpty) {
+              final out = <SymExpr>[...posFactors];
+              if (remFactors.isNotEmpty) {
+                out.add(SymFunc('sqrt', remFactors.length == 1 ? remFactors.first : SymMul(remFactors)));
+              }
+              return simplify(SymMul(out), depth: depth + 1);
+            }
+          }
         } else if (canonicalName == 'sin') {
           if (sa is SymNum && sa.rat.isZero) return SymNum.intVal(0);
-          if (sa is SymConst && sa.name == 'pi') return SymNum.intVal(0);
+          final exactSin = _evalExactTrigPi('sin', sa);
+          if (exactSin != null) return exactSin;
           if (sa is SymNum && sa.rat.p < 0) {
             return simplify(
               SymMul([SymNum.intVal(-1), SymFunc('sin', SymNum(sa.rat.abs()))]),
@@ -530,16 +600,19 @@ class SymbolicCalculusEngine {
           }
         } else if (canonicalName == 'cos') {
           if (sa is SymNum && sa.rat.isZero) return SymNum.intVal(1);
-          if (sa is SymConst && sa.name == 'pi') return SymNum.intVal(-1);
+          final exactCos = _evalExactTrigPi('cos', sa);
+          if (exactCos != null) return exactCos;
           if (sa is SymNum && sa.rat.p < 0) {
             return SymFunc('cos', SymNum(sa.rat.abs()));
           }
         } else if (canonicalName == 'tan') {
           if (sa is SymNum && sa.rat.isZero) return SymNum.intVal(0);
-          if (sa is SymConst && sa.name == 'pi') return SymNum.intVal(0);
+          final exactTan = _evalExactTrigPi('tan', sa);
+          if (exactTan != null) return exactTan;
         } else if (canonicalName == 'abs') {
           if (sa is SymNum) return SymNum(sa.rat.abs());
           if (sa is SymFloat) return SymFloat(sa.value.abs());
+          if (_isDefinitelyPositive(sa)) return sa;
         }
         // Limpiar argumento puramente negativo dentro de cos(-u) = cos(u)
         if (canonicalName == 'cos' && _isStrictlyNegated(sa)) {
@@ -565,42 +638,27 @@ class SymbolicCalculusEngine {
           if (res != null) return SymNum(res);
         }
         if (sb is SymPow && sb.exp is SymNum && se is SymNum) {
-          final prod = sb.exp is SymNum ? (sb.exp as SymNum).rat.tryMul(se.rat) : null;
+          final prod = (sb.exp as SymNum).rat.tryMul(se.rat);
           if (prod != null) {
-            return simplify(SymPow(sb.base, SymNum(prod)), depth: depth + 1);
+            if (_isDefinitelyPositive(sb.base) || (sb.exp as SymNum).rat.p.isOdd || se.rat.isInt) {
+              return simplify(SymPow(sb.base, SymNum(prod)), depth: depth + 1);
+            }
           }
         }
-        if (sb is SymMul && se is SymNum && se.rat.isInt && se.rat.p == 2) {
-          // (-x)^2 -> x^2
-          if (sb.factors.isNotEmpty && sb.factors.first is SymNum && (sb.factors.first as SymNum).rat.isMinusOne) {
-            final rest = sb.factors.length == 2 ? sb.factors[1] : SymMul(sb.factors.sublist(1));
-            return simplify(SymPow(rest, se), depth: depth + 1);
-          }
+        if (sb is SymFunc && sb.name == 'sqrt' && se is SymNum && se.rat.isInt && se.rat.p % 2 == 0) {
+          final halfP = se.rat.p ~/ 2;
+          return simplify(SymPow(sb.arg, SymNum.intVal(halfP)), depth: depth + 1);
+        }
+        if (sb is SymMul && se is SymNum && se.rat.isInt && se.rat.p.abs() >= 1 && se.rat.p.abs() <= 6) {
+          return simplify(
+            SymMul(sb.factors.map((f) => SymPow(f, se)).toList()),
+            depth: depth + 1,
+          );
         }
         return SymPow(sb, se);
 
       case SymDiv(:final num, :final den):
-        final sn = simplify(num, depth: depth + 1);
-        final sd = simplify(den, depth: depth + 1);
-        if (sn is SymNum && sn.rat.isZero) return SymNum.intVal(0);
-        if (sd is SymNum && sd.rat.isOne) return sn;
-        if (sd is SymNum && sd.rat.isMinusOne) {
-          return simplify(SymMul([SymNum.intVal(-1), sn]), depth: depth + 1);
-        }
-        if (sn is SymNum && sd is SymNum) {
-          final q = sn.rat.tryDiv(sd.rat);
-          if (q != null) return SymNum(q);
-          return SymFloat(sn.rat.toDouble() / sd.rat.toDouble());
-        }
-        if (sd is SymNum) {
-          final inv = SymRat(sd.rat.q, sd.rat.p);
-          return simplify(SymMul([SymNum(inv), sn]), depth: depth + 1);
-        }
-        // Cancelar potencia de misma base cuando es obvia: x^2 / x -> x
-        if (sn is SymVar && sd is SymVar && sn.name == sd.name) {
-          return SymNum.intVal(1);
-        }
-        return SymDiv(sn, sd);
+        return _simplifyDiv(num, den, depth: depth + 1);
 
       case SymMul(:final factors):
         return _simplifyMul(factors, depth: depth + 1);
@@ -608,6 +666,286 @@ class SymbolicCalculusEngine {
       case SymAdd(:final terms):
         return _simplifyAdd(terms, depth: depth + 1);
     }
+  }
+
+  static bool _isDefinitelyPositive(SymExpr e) {
+    if (e is SymNum) return e.rat.p > 0;
+    if (e is SymFloat) return e.value > 0;
+    if (e is SymConst) return true;
+    if (e is SymVar) return positiveSymbolicConstants.contains(e.name);
+    if (e is SymPow && e.exp is SymNum && (e.exp as SymNum).rat.isInt && (e.exp as SymNum).rat.p.isEven) {
+      return true;
+    }
+    if (e is SymMul) return e.factors.every(_isDefinitelyPositive);
+    return false;
+  }
+
+  /// Evalúa sin/cos/tan exactamente para múltiplos racionales estándar de π (0, ±π/6, ±π/4, ±π/3, ±π/2, ±π, 2π...).
+  static SymExpr? _evalExactTrigPi(String fn, SymExpr arg) {
+    SymRat? piMultiple;
+    if (arg is SymConst && arg.name == 'pi') {
+      piMultiple = SymRat.one;
+    } else if (arg is SymMul && arg.factors.length == 2) {
+      final f0 = arg.factors[0];
+      final f1 = arg.factors[1];
+      if (f0 is SymNum && f1 is SymConst && f1.name == 'pi') {
+        piMultiple = f0.rat;
+      } else if (f1 is SymNum && f0 is SymConst && f0.name == 'pi') {
+        piMultiple = f1.rat;
+      }
+    } else if (arg is SymDiv && arg.num is SymConst && (arg.num as SymConst).name == 'pi' && arg.den is SymNum) {
+      piMultiple = SymRat(1, 1).tryDiv((arg.den as SymNum).rat);
+    }
+    if (piMultiple == null) return null;
+
+    // Normalize k in k*pi to [0, 2)
+    final p = piMultiple.p;
+    final q = piMultiple.q;
+    if (q > 12 || (12 % q != 0)) return null;
+    final step = ((p * (12 ~/ q)) % 24 + 24) % 24; // 0..23 representing step * pi / 12
+
+    if (fn == 'sin') {
+      switch (step) {
+        case 0:
+        case 12:
+          return SymNum.intVal(0);
+        case 6:
+          return SymNum.intVal(1);
+        case 18:
+          return SymNum.intVal(-1);
+        case 2:
+        case 10:
+          return SymNum(SymRat(1, 2));
+        case 14:
+        case 22:
+          return SymNum(SymRat(-1, 2));
+        case 3:
+        case 9:
+          return SymDiv(SymFunc('sqrt', SymNum.intVal(2)), SymNum.intVal(2));
+        case 15:
+        case 21:
+          return SymMul([SymNum.intVal(-1), SymDiv(SymFunc('sqrt', SymNum.intVal(2)), SymNum.intVal(2))]);
+        case 4:
+        case 8:
+          return SymDiv(SymFunc('sqrt', SymNum.intVal(3)), SymNum.intVal(2));
+        case 16:
+        case 20:
+          return SymMul([SymNum.intVal(-1), SymDiv(SymFunc('sqrt', SymNum.intVal(3)), SymNum.intVal(2))]);
+      }
+    } else if (fn == 'cos') {
+      switch (step) {
+        case 0:
+          return SymNum.intVal(1);
+        case 12:
+          return SymNum.intVal(-1);
+        case 6:
+        case 18:
+          return SymNum.intVal(0);
+        case 4:
+        case 20:
+          return SymNum(SymRat(1, 2));
+        case 8:
+        case 16:
+          return SymNum(SymRat(-1, 2));
+        case 3:
+        case 21:
+          return SymDiv(SymFunc('sqrt', SymNum.intVal(2)), SymNum.intVal(2));
+        case 9:
+        case 15:
+          return SymMul([SymNum.intVal(-1), SymDiv(SymFunc('sqrt', SymNum.intVal(2)), SymNum.intVal(2))]);
+        case 2:
+        case 22:
+          return SymDiv(SymFunc('sqrt', SymNum.intVal(3)), SymNum.intVal(2));
+        case 10:
+        case 14:
+          return SymMul([SymNum.intVal(-1), SymDiv(SymFunc('sqrt', SymNum.intVal(3)), SymNum.intVal(2))]);
+      }
+    } else if (fn == 'tan') {
+      switch (step) {
+        case 0:
+        case 12:
+          return SymNum.intVal(0);
+        case 3:
+        case 15:
+          return SymNum.intVal(1);
+        case 9:
+        case 21:
+          return SymNum.intVal(-1);
+      }
+    }
+    return null;
+  }
+
+  static SymExpr _simplifyDiv(SymExpr rawNum, SymExpr rawDen, {int depth = 0}) {
+    final sn = simplify(rawNum, depth: depth + 1);
+    final sd = simplify(rawDen, depth: depth + 1);
+    if (sn is SymNum && sn.rat.isZero) return SymNum.intVal(0);
+    if (sd is SymNum && sd.rat.isOne) return sn;
+    if (sd is SymNum && sd.rat.isMinusOne) {
+      return simplify(SymMul([SymNum.intVal(-1), sn]), depth: depth + 1);
+    }
+    if (sn is SymNum && sd is SymNum) {
+      final q = sn.rat.tryDiv(sd.rat);
+      if (q != null) return SymNum(q);
+      return SymFloat(sn.rat.toDouble() / sd.rat.toDouble());
+    }
+    if (sd is SymNum) {
+      final inv = SymRat(sd.rat.q, sd.rat.p);
+      return simplify(SymMul([SymNum(inv), sn]), depth: depth + 1);
+    }
+
+    // Flatten nested divisions (A / B) / (C / D) -> (A * D) / (B * C)
+    if (sn is SymDiv || sd is SymDiv) {
+      final numExpr = sn is SymDiv ? sn.num : sn;
+      final numDen = sn is SymDiv ? sn.den : SymNum.intVal(1);
+      final denNum = sd is SymDiv ? sd.num : sd;
+      final denDen = sd is SymDiv ? sd.den : SymNum.intVal(1);
+      return _simplifyDiv(
+        simplify(SymMul([numExpr, denDen]), depth: depth + 1),
+        simplify(SymMul([numDen, denNum]), depth: depth + 1),
+        depth: depth + 1,
+      );
+    }
+
+    // Cancel common multiplicative factors between numerator and denominator
+    final nFacs = sn is SymMul ? List<SymExpr>.from(sn.factors) : <SymExpr>[sn];
+    final dFacs = sd is SymMul ? List<SymExpr>.from(sd.factors) : <SymExpr>[sd];
+
+    SymRat? numCoeff = SymRat.one;
+    final nGroups = <String, (SymExpr base, SymExpr exp)>{};
+    final nOrder = <String>[];
+    final nExtra = <SymExpr>[];
+
+    for (final f in nFacs) {
+      if (f is SymNum) {
+        final m = numCoeff?.tryMul(f.rat);
+        if (m != null) {
+          numCoeff = m;
+        } else {
+          nExtra.add(f);
+        }
+      } else if (f is SymPow) {
+        final k = f.base.structuralKey();
+        if (nGroups.containsKey(k)) {
+          final ex = nGroups[k]!;
+          nGroups[k] = (ex.$1, simplify(SymAdd([ex.$2, f.exp]), depth: depth + 1));
+        } else {
+          nGroups[k] = (f.base, f.exp);
+          nOrder.add(k);
+        }
+      } else {
+        final k = f.structuralKey();
+        if (nGroups.containsKey(k)) {
+          final ex = nGroups[k]!;
+          nGroups[k] = (ex.$1, simplify(SymAdd([ex.$2, SymNum.intVal(1)]), depth: depth + 1));
+        } else {
+          nGroups[k] = (f, SymNum.intVal(1));
+          nOrder.add(k);
+        }
+      }
+    }
+
+    SymRat? denCoeff = SymRat.one;
+    final dGroups = <String, (SymExpr base, SymExpr exp)>{};
+    final dOrder = <String>[];
+    final dExtra = <SymExpr>[];
+
+    for (final f in dFacs) {
+      if (f is SymNum) {
+        final m = denCoeff?.tryMul(f.rat);
+        if (m != null) {
+          denCoeff = m;
+        } else {
+          dExtra.add(f);
+        }
+      } else if (f is SymPow) {
+        final k = f.base.structuralKey();
+        if (dGroups.containsKey(k)) {
+          final ex = dGroups[k]!;
+          dGroups[k] = (ex.$1, simplify(SymAdd([ex.$2, f.exp]), depth: depth + 1));
+        } else {
+          dGroups[k] = (f.base, f.exp);
+          dOrder.add(k);
+        }
+      } else {
+        final k = f.structuralKey();
+        if (dGroups.containsKey(k)) {
+          final ex = dGroups[k]!;
+          dGroups[k] = (ex.$1, simplify(SymAdd([ex.$2, SymNum.intVal(1)]), depth: depth + 1));
+        } else {
+          dGroups[k] = (f, SymNum.intVal(1));
+          dOrder.add(k);
+        }
+      }
+    }
+
+    bool cancelledAny = false;
+    final combinedRatio = (numCoeff != null && denCoeff != null && !denCoeff.isZero)
+        ? numCoeff.tryDiv(denCoeff)
+        : null;
+
+    for (final k in List<String>.from(nOrder)) {
+      if (!dGroups.containsKey(k)) continue;
+      final (base, nExp) = nGroups[k]!;
+      final (_, dExp) = dGroups[k]!;
+      if (nExp is SymNum && dExp is SymNum) {
+        final diffExp = nExp.rat.tryAdd(dExp.rat.neg());
+        if (diffExp != null) {
+          cancelledAny = true;
+          if (diffExp.isZero) {
+            nGroups.remove(k);
+            nOrder.remove(k);
+            dGroups.remove(k);
+            dOrder.remove(k);
+          } else if (diffExp.p > 0) {
+            nGroups[k] = (base, SymNum(diffExp));
+            dGroups.remove(k);
+            dOrder.remove(k);
+          } else {
+            nGroups.remove(k);
+            nOrder.remove(k);
+            dGroups[k] = (base, SymNum(diffExp.neg()));
+          }
+        }
+      } else if (nExp.structuralKey() == dExp.structuralKey()) {
+        cancelledAny = true;
+        nGroups.remove(k);
+        nOrder.remove(k);
+        dGroups.remove(k);
+        dOrder.remove(k);
+      }
+    }
+
+    if (cancelledAny || (combinedRatio != null && !denCoeff!.isOne)) {
+      final finalNumList = <SymExpr>[
+        if (combinedRatio != null && !combinedRatio.isOne) SymNum(combinedRatio),
+        if (combinedRatio == null && numCoeff != null && !numCoeff.isOne) SymNum(numCoeff),
+        ...nExtra,
+        for (final k in nOrder)
+          (nGroups[k]!.$2 is SymNum && (nGroups[k]!.$2 as SymNum).rat.isOne)
+              ? nGroups[k]!.$1
+              : SymPow(nGroups[k]!.$1, nGroups[k]!.$2),
+      ];
+      final finalDenList = <SymExpr>[
+        if (combinedRatio == null && denCoeff != null && !denCoeff.isOne) SymNum(denCoeff),
+        ...dExtra,
+        for (final k in dOrder)
+          (dGroups[k]!.$2 is SymNum && (dGroups[k]!.$2 as SymNum).rat.isOne)
+              ? dGroups[k]!.$1
+              : SymPow(dGroups[k]!.$1, dGroups[k]!.$2),
+      ];
+
+      final newNum = finalNumList.isEmpty
+          ? SymNum.intVal(1)
+          : (finalNumList.length == 1 ? finalNumList.first : SymMul(finalNumList));
+      if (finalDenList.isEmpty) {
+        return simplify(newNum, depth: depth + 1);
+      }
+      final newDen = finalDenList.length == 1 ? finalDenList.first : SymMul(finalDenList);
+      return SymDiv(simplify(newNum, depth: depth + 1), simplify(newDen, depth: depth + 1));
+    }
+
+    return SymDiv(sn, sd);
   }
 
   static bool _isStrictlyNegated(SymExpr e) {
@@ -637,13 +975,33 @@ class SymbolicCalculusEngine {
 
   static SymExpr _simplifyMul(List<SymExpr> rawFactors, {int depth = 0}) {
     final flat = <SymExpr>[];
+    final denomFactors = <SymExpr>[];
     for (final f in rawFactors) {
       final sf = simplify(f, depth: depth + 1);
       if (sf is SymMul) {
         flat.addAll(sf.factors);
+      } else if (sf is SymDiv) {
+        if (sf.num is SymMul) {
+          flat.addAll((sf.num as SymMul).factors);
+        } else {
+          flat.add(sf.num);
+        }
+        if (sf.den is SymMul) {
+          denomFactors.addAll((sf.den as SymMul).factors);
+        } else {
+          denomFactors.add(sf.den);
+        }
       } else {
         flat.add(sf);
       }
+    }
+
+    if (denomFactors.isNotEmpty) {
+      final numExpr = flat.isEmpty
+          ? SymNum.intVal(1)
+          : (flat.length == 1 ? flat.first : SymMul(flat));
+      final denExpr = denomFactors.length == 1 ? denomFactors.first : SymMul(denomFactors);
+      return _simplifyDiv(numExpr, denExpr, depth: depth + 1);
     }
 
     SymRat? ratCoeff = SymRat.one;
@@ -825,6 +1183,31 @@ class SymbolicCalculusEngine {
           final rest = t.factors.sublist(1);
           base = rest.length == 1 ? rest.first : SymMul(rest);
         }
+      } else if (t is SymDiv) {
+        SymRat numR = SymRat.one;
+        SymExpr numRem = t.num;
+        if (t.num is SymNum) {
+          numR = (t.num as SymNum).rat;
+          numRem = SymNum.intVal(1);
+        } else if (t.num is SymMul && (t.num as SymMul).factors.isNotEmpty && (t.num as SymMul).factors.first is SymNum) {
+          final mf = (t.num as SymMul).factors;
+          numR = (mf.first as SymNum).rat;
+          final rest = mf.sublist(1);
+          numRem = rest.isEmpty ? SymNum.intVal(1) : (rest.length == 1 ? rest.first : SymMul(rest));
+        }
+        SymRat denR = SymRat.one;
+        SymExpr denRem = t.den;
+        if (t.den is SymMul && (t.den as SymMul).factors.isNotEmpty && (t.den as SymMul).factors.first is SymNum) {
+          final df = (t.den as SymMul).factors;
+          denR = (df.first as SymNum).rat;
+          final rest = df.sublist(1);
+          denRem = rest.isEmpty ? SymNum.intVal(1) : (rest.length == 1 ? rest.first : SymMul(rest));
+        }
+        final qR = numR.tryDiv(denR);
+        if (qR != null && !qR.isOne) {
+          coeff = SymNum(qR);
+          base = SymDiv(numRem, denRem);
+        }
       }
 
       final key = base.structuralKey();
@@ -945,7 +1328,7 @@ class SymbolicCalculusEngine {
   // ==================== DERIVACIÓN SIMBÓLICA ====================
 
   static SymExpr diff(SymExpr expr, String variable) {
-    final v = variable.toLowerCase();
+    final v = SymVar.canonicalName(variable);
     SymExpr d(SymExpr e) {
       if (!e.dependsOn(v)) return SymNum.intVal(0);
       switch (e) {
@@ -1088,21 +1471,16 @@ class SymbolicCalculusEngine {
   }
 
   static Map<String, double> _safeOtherVarEnv(Set<String> vars, String activeVar) {
-    const defaults = [1.23, 0.87, 0.59, 1.41, 0.93];
-    final env = <String, double>{};
-    int idx = 0;
-    for (final w in vars) {
-      if (w == activeVar.toLowerCase()) continue;
-      env[w] = defaults[idx % defaults.length];
-      idx++;
-    }
+    final canonActive = SymVar.canonicalName(activeVar);
+    final env = defaultParamEnv(vars);
+    env.remove(canonActive);
     return env;
   }
 
   // ==================== INTEGRACIÓN SIMBÓLICA COMPOSICIONAL ====================
 
   static SymbolicIntegrationOutcome integrate(SymExpr expr, String variable) {
-    final v = variable.toLowerCase();
+    final v = SymVar.canonicalName(variable);
     final simp = simplify(expr);
     final outcome = _integrateRecursive(simp, v, depth: 0);
 
@@ -1869,6 +2247,44 @@ class SymbolicCalculusEngine {
     if (e is! SymMul || e.factors.length != 2) return null;
     final f1 = e.factors[0];
     final f2 = e.factors[1];
+
+    // Caso sin(u)^2 * cos(u)^2 = (1 - cos(4u))/8
+    if (f1 is SymPow &&
+        f2 is SymPow &&
+        f1.exp is SymNum &&
+        f2.exp is SymNum &&
+        (f1.exp as SymNum).rat.isInt &&
+        (f2.exp as SymNum).rat.isInt &&
+        (f1.exp as SymNum).rat.p == 2 &&
+        (f2.exp as SymNum).rat.p == 2 &&
+        f1.base is SymFunc &&
+        f2.base is SymFunc) {
+      final b1 = f1.base as SymFunc;
+      final b2 = f2.base as SymFunc;
+      if (((b1.name == 'sin' && b2.name == 'cos') || (b1.name == 'cos' && b2.name == 'sin')) &&
+          b1.arg.structuralKey() == b2.arg.structuralKey()) {
+        final lin = matchLinear(b1.arg, v);
+        if (lin != null) {
+          final fourU = simplify(SymMul([SymNum.intVal(4), b1.arg]));
+          final rewritten = simplify(SymMul([
+            SymNum(SymRat(1, 8)),
+            SymAdd([SymNum.intVal(1), SymMul([SymNum.intVal(-1), SymFunc('cos', fourU)])]),
+          ]));
+          final sub = _integrateRecursive(rewritten, v, depth: depth + 1);
+          if (sub.isSymbolic && sub.antiderivative != null) {
+            return SymbolicIntegrationOutcome(
+              isSymbolic: true,
+              antiderivative: sub.antiderivative,
+              antiderivativeLatex: sub.antiderivativeLatex,
+              method: 'Identidad de Ángulo Doble (sin²u cos²u)',
+              explanation: 'Aplicamos sin²(u)cos²(u) = (1 - cos(4u))/8.',
+              transformationLatex: '${toLatex(e)} = ${toLatex(rewritten)}',
+            );
+          }
+        }
+      }
+    }
+
     if (f1 is! SymFunc || f2 is! SymFunc) return null;
     if (!((f1.name == 'sin' || f1.name == 'cos') && (f2.name == 'sin' || f2.name == 'cos'))) {
       return null;
@@ -2017,12 +2433,30 @@ class SymbolicCalculusEngine {
           remainder = vFacs.isEmpty ? SymNum.intVal(1) : SymMul(vFacs);
         }
       } else if (eWithU is SymDiv) {
-        // Caso num(v) / g(u)
+        // Caso num(v) / g(u) o g(u) / den(v)
         final numHasU = eWithU.num.dependsOn(uSymName);
         final denHasU = eWithU.den.dependsOn(uSymName);
         if (denHasU && !eWithU.den.dependsOn(v) && !numHasU) {
           gOfU = SymDiv(SymNum.intVal(1), eWithU.den);
           remainder = eWithU.num;
+        } else if (numHasU && !eWithU.num.dependsOn(v) && !denHasU) {
+          gOfU = eWithU.num;
+          remainder = SymDiv(SymNum.intVal(1), eWithU.den);
+        } else if (eWithU.num is SymMul && !denHasU) {
+          final uFacs = <SymExpr>[];
+          final vFacs = <SymExpr>[];
+          for (final f in (eWithU.num as SymMul).factors) {
+            if (f.dependsOn(uSymName) && !f.dependsOn(v)) {
+              uFacs.add(f);
+            } else {
+              vFacs.add(f);
+            }
+          }
+          if (uFacs.isNotEmpty) {
+            gOfU = uFacs.length == 1 ? uFacs.first : SymMul(uFacs);
+            final remNum = vFacs.isEmpty ? SymNum.intVal(1) : SymMul(vFacs);
+            remainder = SymDiv(remNum, eWithU.den);
+          }
         }
       }
 
@@ -2592,12 +3026,13 @@ class _AstParser {
       while ((_ch >= 97 && _ch <= 122) || (_ch >= 65 && _ch <= 90) || (_ch >= 48 && _ch <= 57)) {
         _pos++;
       }
-      final ident = _s.substring(start, _pos).toLowerCase();
+      final rawIdent = _s.substring(start, _pos);
+      final ident = (rawIdent == 'R' || rawIdent == 'H') ? rawIdent : rawIdent.toLowerCase();
       if (ident == 'pi' || ident == 'e') return SymConst(ident);
       if (_eat(40)) {
         final arg = _parseExpr();
         if (!_eat(41)) throw FormatException('Paréntesis no cerrado en $ident');
-        return SymFunc(ident, arg);
+        return SymFunc(ident.toLowerCase(), arg);
       }
       return SymVar(ident);
     }

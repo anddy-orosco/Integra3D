@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/integration_bound.dart';
@@ -71,6 +72,7 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
   String _outerVar = 'x';
   String _innerVar = 'y';
   String _midVar = 'y';
+  CoordinateSystemType _coordinateSystem = CoordinateSystemType.cartesian;
 
   // Ranura actualmente activa (con foco)
   MathSlot _activeSlot = MathSlot.integrand;
@@ -80,10 +82,12 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
   Timer? _blinkTimer;
 
   bool _isKeyboardVisible = true;
+  late final FocusNode _keyboardFocusNode;
 
   @override
   void initState() {
     super.initState();
+    _keyboardFocusNode = FocusNode();
     _initControllers();
     _syncFromIntegral(widget.initialIntegral);
 
@@ -122,6 +126,7 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
 
   void _syncFromIntegral(MultivariableIntegral integral) {
     _dimension = integral.dimension.clamp(1, 3);
+    _coordinateSystem = integral.coordinateSystem;
     _integrandCtrl.text = integral.integrand;
 
     if (integral.bounds.length >= 3) {
@@ -173,6 +178,7 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
   @override
   void dispose() {
     _blinkTimer?.cancel();
+    _keyboardFocusNode.dispose();
     _integrandCtrl.dispose();
     _innerLowerCtrl.dispose();
     _innerUpperCtrl.dispose();
@@ -181,6 +187,166 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
     _midLowerCtrl.dispose();
     _midUpperCtrl.dispose();
     super.dispose();
+  }
+
+  void _insertTextIntoCurrentController(String text, {int cursorOffset = 0}) {
+    final ctrl = _currentActiveController;
+    final t = ctrl.text;
+    final sel = ctrl.selection;
+    int start = sel.start;
+    int end = sel.end;
+    if (start < 0) {
+      start = t.length;
+      end = t.length;
+    }
+    final newText = t.replaceRange(start, end, text);
+    final newPos = (start + text.length + cursorOffset).clamp(0, newText.length);
+    ctrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newPos),
+    );
+    setState(() {});
+  }
+
+  void _handlePhysicalBackspace() {
+    final ctrl = _currentActiveController;
+    final t = ctrl.text;
+    final sel = ctrl.selection;
+    int start = sel.start;
+    int end = sel.end;
+    if (start < 0) {
+      start = t.length;
+      end = t.length;
+    }
+    if (start != end) {
+      final newText = t.replaceRange(start, end, '');
+      ctrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start),
+      );
+    } else if (start > 0) {
+      final newText = t.replaceRange(start - 1, start, '');
+      ctrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start - 1),
+      );
+    }
+    setState(() {});
+  }
+
+  void _handlePhysicalDelete() {
+    final ctrl = _currentActiveController;
+    final t = ctrl.text;
+    final sel = ctrl.selection;
+    int start = sel.start;
+    int end = sel.end;
+    if (start < 0) {
+      start = t.length;
+      end = t.length;
+    }
+    if (start != end) {
+      final newText = t.replaceRange(start, end, '');
+      ctrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start),
+      );
+    } else if (start < t.length) {
+      final newText = t.replaceRange(start, start + 1, '');
+      ctrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start),
+      );
+    }
+    setState(() {});
+  }
+
+  void _moveCursorLeft() {
+    final ctrl = _currentActiveController;
+    final sel = ctrl.selection;
+    int start = sel.start;
+    if (start > 0) {
+      ctrl.selection = TextSelection.collapsed(offset: start - 1);
+      setState(() {});
+    }
+  }
+
+  void _moveCursorRight() {
+    final ctrl = _currentActiveController;
+    final sel = ctrl.selection;
+    int end = sel.end;
+    if (end < ctrl.text.length) {
+      ctrl.selection = TextSelection.collapsed(offset: end + 1);
+      setState(() {});
+    }
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+
+    // Enter / Numpad Enter -> Resolver
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+      _submit();
+      return KeyEventResult.handled;
+    }
+
+    // Tab -> Siguiente / Anterior ranura
+    if (key == LogicalKeyboardKey.tab) {
+      if (HardwareKeyboard.instance.isShiftPressed) {
+        _prevSlot();
+      } else {
+        _nextSlot();
+      }
+      return KeyEventResult.handled;
+    }
+
+    // Backspace
+    if (key == LogicalKeyboardKey.backspace) {
+      _handlePhysicalBackspace();
+      return KeyEventResult.handled;
+    }
+
+    // Delete
+    if (key == LogicalKeyboardKey.delete) {
+      _handlePhysicalDelete();
+      return KeyEventResult.handled;
+    }
+
+    // Escape -> Limpiar ranura activa
+    if (key == LogicalKeyboardKey.escape) {
+      _clearActiveSlot();
+      return KeyEventResult.handled;
+    }
+
+    // Flechas de navegación
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _moveCursorLeft();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _moveCursorRight();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowUp) {
+      _prevSlot();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      _nextSlot();
+      return KeyEventResult.handled;
+    }
+
+    // Caracteres imprimibles
+    final char = event.character;
+    if (char != null && char.isNotEmpty && char.codeUnitAt(0) >= 32) {
+      _insertTextIntoCurrentController(char);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   TextEditingController get _currentActiveController {
@@ -507,19 +673,35 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
         _dimension = 2;
         _innerVar = 'y';
         _outerVar = 'x';
+        _coordinateSystem = CoordinateSystemType.cartesian;
       } else if (diff == 'dx dy') {
         _dimension = 2;
         _innerVar = 'x';
         _outerVar = 'y';
+        _coordinateSystem = CoordinateSystemType.cartesian;
       } else if (diff == 'dz dy dx') {
         _dimension = 3;
         _innerVar = 'z';
         _midVar = 'y';
         _outerVar = 'x';
+        _coordinateSystem = CoordinateSystemType.cartesian;
       } else if (diff == 'r dr dθ') {
         _dimension = 2;
         _innerVar = 'r';
         _outerVar = 'theta';
+        _coordinateSystem = CoordinateSystemType.polar;
+      } else if (diff == 'r dz dr dθ') {
+        _dimension = 3;
+        _innerVar = 'z';
+        _midVar = 'r';
+        _outerVar = 'theta';
+        _coordinateSystem = CoordinateSystemType.cylindrical;
+      } else if (diff == 'dρ dφ dθ') {
+        _dimension = 3;
+        _innerVar = 'rho';
+        _midVar = 'phi';
+        _outerVar = 'theta';
+        _coordinateSystem = CoordinateSystemType.spherical;
       } else if (diff == 'dx') {
         _innerVar = 'x';
       } else if (diff == 'dy') {
@@ -530,6 +712,12 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
         _innerVar = 'r';
       } else if (diff == 'dtheta') {
         _outerVar = 'theta';
+      } else if (diff == 'dphi') {
+        _midVar = 'phi';
+        _coordinateSystem = CoordinateSystemType.spherical;
+      } else if (diff == 'drho') {
+        _innerVar = 'rho';
+        _coordinateSystem = CoordinateSystemType.spherical;
       }
     });
   }
@@ -619,10 +807,23 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
       ];
     }
 
+    var effectiveCoord = _coordinateSystem;
+    if (_dimension == 2 && _innerVar == 'r' && _outerVar == 'theta') {
+      effectiveCoord = CoordinateSystemType.polar;
+    } else if (_dimension == 3 &&
+        bounds.any((b) => b.variable == 'r') &&
+        bounds.any((b) => b.variable == 'theta')) {
+      effectiveCoord = CoordinateSystemType.cylindrical;
+    } else if (_dimension == 3 &&
+        bounds.any((b) => b.variable == 'rho') &&
+        bounds.any((b) => b.variable == 'phi')) {
+      effectiveCoord = CoordinateSystemType.spherical;
+    }
+
     final compiled = MultivariableIntegral(
       integrand: normIntegrand,
       bounds: bounds,
-      coordinateSystem: CoordinateSystemType.cartesian,
+      coordinateSystem: effectiveCoord,
     );
 
     widget.onSolve(compiled);
@@ -668,19 +869,32 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
   Widget build(BuildContext context) {
     const activeOrange = Color(0xFFE65100);
 
-    return Column(
-      children: [
+    return Focus(
+      focusNode: _keyboardFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleKeyEvent,
+      child: Column(
+        children: [
         // 1. Selector Superior de Dimensión (1D, 2D, 3D)
         Container(
           margin: const EdgeInsets.fromLTRB(14, 4, 14, 4),
           child: Row(
             children: [
-              _buildDimensionPill(2, '∬ Doble (2D)'),
-              const SizedBox(width: 8),
-              _buildDimensionPill(3, '∭ Triple (3D)'),
-              const SizedBox(width: 8),
-              _buildDimensionPill(1, '∫ Simple (1D)'),
-              const Spacer(),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildDimensionPill(2, '∬ Doble (2D)'),
+                      const SizedBox(width: 8),
+                      _buildDimensionPill(3, '∭ Triple (3D)'),
+                      const SizedBox(width: 8),
+                      _buildDimensionPill(1, '∫ Simple (1D)'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
               // Botón para alternar teclado
               IconButton(
                 icon: Icon(
@@ -996,7 +1210,7 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
           ),
         ),
 
-        // 5. Teclado Virtual Completo Mathway con Pestañas
+        // 5. Teclado Virtual Completo Mathway con Pestañas o Tarjeta de Atajos Físicos
         if (_isKeyboardVisible)
           Expanded(
             child: MathwayKeyboard(
@@ -1008,8 +1222,110 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
               onDifferentialSelected: _handleDifferentialSelected,
               onSpecialTemplate: _handleSpecialTemplate,
             ),
+          )
+        else
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.slateDark,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.keyboard_outlined, color: AppColors.cyberEmerald, size: 20),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Modo Teclado Físico Activo (PC / Mac / iPad)',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.pureWhite,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        _buildShortcutBadge('Tab', 'Siguiente ranura'),
+                        _buildShortcutBadge('Shift + Tab', 'Ranura anterior'),
+                        _buildShortcutBadge('Enter', 'Resolver integral'),
+                        _buildShortcutBadge('Esc', 'Limpiar ranura'),
+                        _buildShortcutBadge('← / →', 'Mover cursor'),
+                        _buildShortcutBadge('x, y, z, r, θ', 'Variables directas'),
+                        _buildShortcutBadge('^ * / + -', 'Operadores'),
+                        _buildShortcutBadge('sqrt, sin, cos', 'Funciones'),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    TextButton.icon(
+                      onPressed: () => setState(() => _isKeyboardVisible = true),
+                      icon: const Icon(Icons.keyboard_rounded, size: 16, color: AppColors.electricCyan),
+                      label: const Text(
+                        'Mostrar Teclado Táctil en Pantalla',
+                        style: TextStyle(color: AppColors.electricCyan, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
       ],
+    ),
+  );
+}
+
+  Widget _buildShortcutBadge(String key, String desc) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.deepVoid,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.cyberEmerald.withAlpha(90)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.slateElevated,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            child: Text(
+              key,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: AppColors.electricCyan,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            desc,
+            style: const TextStyle(fontSize: 10, color: AppColors.mutedGray),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1121,6 +1437,7 @@ class _MathwayFormulaEditorState extends State<MathwayFormulaEditor> {
       borderRadius: BorderRadius.circular(6),
       onTap: () {
         setState(() => _activeSlot = slot);
+        _keyboardFocusNode.requestFocus();
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),

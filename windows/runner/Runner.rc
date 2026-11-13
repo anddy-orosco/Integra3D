@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.integra3d" "\0"
-            VALUE "FileDescription", "integra_3d" "\0"
+            VALUE "FileDescription", "Integra3D - Calculo Multivariable y Graficadora" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "integra_3d" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.integra3d. All rights reserved." "\0"
             VALUE "OriginalFilename", "integra_3d.exe" "\0"
-            VALUE "ProductName", "integra_3d" "\0"
+            VALUE "ProductName", "Integra3D" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

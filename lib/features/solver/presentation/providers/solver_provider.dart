@@ -155,6 +155,11 @@ class SolverNotifier extends Notifier<SolverState> {
     );
   }
 
+  void solveIntegralModel(MultivariableIntegral integral) {
+    state = state.copyWith(currentIntegral: integral);
+    solve();
+  }
+
   void loadPreset(Map<String, dynamic> preset) {
     final rawBounds = (preset['bounds'] as List<dynamic>?) ?? [];
     final bounds = rawBounds
@@ -163,7 +168,9 @@ class SolverNotifier extends Notifier<SolverState> {
 
     CoordinateSystemType coordType = CoordinateSystemType.cartesian;
     final coordStr = preset['coordinate_system'] as String? ?? 'cartesian';
-    if (coordStr == 'cylindrical') {
+    if (coordStr == 'polar') {
+      coordType = CoordinateSystemType.polar;
+    } else if (coordStr == 'cylindrical') {
       coordType = CoordinateSystemType.cylindrical;
     } else if (coordStr == 'spherical') {
       coordType = CoordinateSystemType.spherical;

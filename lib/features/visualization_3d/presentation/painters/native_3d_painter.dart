@@ -7,18 +7,23 @@ class Triangle3D {
   final double depth; // Average Z in camera space for Painter's algorithm
   final double normalZ; // For directional shading
   final double avgHeight; // Real z-height for elevation colormap
+  final bool isBottomSurface;
 
   Triangle3D({
     required this.points2D,
     required this.depth,
     required this.normalZ,
     required this.avgHeight,
+    this.isBottomSurface = false,
   });
 }
 
 class Native3DCanvasPainter extends CustomPainter {
   final List<double> vertices;
   final List<int> indices;
+  final List<double> bottomVertices;
+  final List<int> bottomIndices;
+  final List<List<Offset>> domainProjectionPolygons;
   final double yaw; // Rotation around Z axis (radians)
   final double pitch; // Rotation around horizontal axis (radians)
   final double zoom;
@@ -26,10 +31,15 @@ class Native3DCanvasPainter extends CustomPainter {
   final bool showWireframe;
   final bool showAxes;
   final bool showGrid;
+  final bool showProjection;
+  final bool showBottomSurface;
 
   Native3DCanvasPainter({
     required this.vertices,
     required this.indices,
+    this.bottomVertices = const [],
+    this.bottomIndices = const [],
+    this.domainProjectionPolygons = const [],
     required this.yaw,
     required this.pitch,
     required this.zoom,
@@ -37,6 +47,8 @@ class Native3DCanvasPainter extends CustomPainter {
     this.showWireframe = true,
     this.showAxes = true,
     this.showGrid = true,
+    this.showProjection = true,
+    this.showBottomSurface = true,
   });
 
   @override
@@ -156,66 +168,107 @@ class Native3DCanvasPainter extends CustomPainter {
       _drawTickText(canvas, '0', origin + const Offset(-6, 6), AppColors.mutedGray);
     }
 
-    if (vertices.isEmpty || indices.isEmpty) return;
+    // 2.5. Draw Shaded 2D Domain Projection R on base plane z = 0
+    if (showProjection && domainProjectionPolygons.isNotEmpty) {
+      final projFillPaint = Paint()
+        ..color = AppColors.cyberEmerald.withAlpha(68)
+        ..style = PaintingStyle.fill;
+      final projStrokePaint = Paint()
+        ..color = AppColors.cyberEmerald.withAlpha(210)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8;
 
-    // 3. Project vertices & build triangles
-    final List<Triangle3D> triangles = [];
-    final int triangleCount = indices.length ~/ 3;
-
-    for (int t = 0; t < triangleCount; t++) {
-      final i0 = indices[t * 3];
-      final i1 = indices[t * 3 + 1];
-      final i2 = indices[t * 3 + 2];
-
-      if (i0 * 3 + 2 >= vertices.length ||
-          i1 * 3 + 2 >= vertices.length ||
-          i2 * 3 + 2 >= vertices.length) {
-        continue;
+      for (final poly in domainProjectionPolygons) {
+        if (poly.length < 3) continue;
+        final path = Path();
+        final p0 = project(poly.first.dx, poly.first.dy, 0.0);
+        path.moveTo(p0.dx, p0.dy);
+        for (int i = 1; i < poly.length; i++) {
+          final pi = project(poly[i].dx, poly[i].dy, 0.0);
+          path.lineTo(pi.dx, pi.dy);
+        }
+        path.close();
+        canvas.drawPath(path, projFillPaint);
+        canvas.drawPath(path, projStrokePaint);
       }
 
-      final x0 = vertices[i0 * 3];
-      final y0 = vertices[i0 * 3 + 1];
-      final z0 = vertices[i0 * 3 + 2];
+      // Label 'R (z=0)' near centroid of first polygon
+      final firstPoly = domainProjectionPolygons.first;
+      if (firstPoly.length >= 3) {
+        final cx = firstPoly.fold(0.0, (s, p) => s + p.dx) / firstPoly.length;
+        final cy = firstPoly.fold(0.0, (s, p) => s + p.dy) / firstPoly.length;
+        _drawText(canvas, 'R (z=0)', project(cx, cy, 0.0) + const Offset(-14, 2), AppColors.cyberEmerald);
+      }
+    }
 
-      final x1 = vertices[i1 * 3];
-      final y1 = vertices[i1 * 3 + 1];
-      final z1 = vertices[i1 * 3 + 2];
+    if (vertices.isEmpty && bottomVertices.isEmpty) return;
 
-      final x2 = vertices[i2 * 3];
-      final y2 = vertices[i2 * 3 + 1];
-      final z2 = vertices[i2 * 3 + 2];
+    // 3. Project vertices & build triangles (both top surface and bottom surface)
+    final List<Triangle3D> triangles = [];
 
-      final p0 = project(x0, y0, z0);
-      final p1 = project(x1, y1, z1);
-      final p2 = project(x2, y2, z2);
+    void addMeshTriangles(List<double> verts, List<int> inds, bool isBottom) {
+      if (verts.isEmpty || inds.isEmpty) return;
+      final int triangleCount = inds.length ~/ 3;
+      for (int t = 0; t < triangleCount; t++) {
+        final i0 = inds[t * 3];
+        final i1 = inds[t * 3 + 1];
+        final i2 = inds[t * 3 + 2];
 
-      final d0 = getDepth(x0, y0, z0);
-      final d1 = getDepth(x1, y1, z1);
-      final d2 = getDepth(x2, y2, z2);
-      final avgDepth = (d0 + d1 + d2) / 3.0;
+        if (i0 * 3 + 2 >= verts.length ||
+            i1 * 3 + 2 >= verts.length ||
+            i2 * 3 + 2 >= verts.length) {
+          continue;
+        }
 
-      // Surface normal vector approximation (cross product)
-      final v1x = x1 - x0;
-      final v1y = y1 - y0;
-      final v1z = z1 - z0;
-      final v2x = x2 - x0;
-      final v2y = y2 - y0;
-      final v2z = z2 - z0;
+        final x0 = verts[i0 * 3];
+        final y0 = verts[i0 * 3 + 1];
+        final z0 = verts[i0 * 3 + 2];
 
-      final nx = v1y * v2z - v1z * v2y;
-      final ny = v1z * v2x - v1x * v2z;
-      final nz = v1x * v2y - v1y * v2x;
-      final normLen = math.sqrt(nx * nx + ny * ny + nz * nz);
-      final normalizedNz = (normLen > 0.0001) ? (nz / normLen).abs() : 0.5;
+        final x1 = verts[i1 * 3];
+        final y1 = verts[i1 * 3 + 1];
+        final z1 = verts[i1 * 3 + 2];
 
-      final avgH = (z0 + z1 + z2) / 3.0;
+        final x2 = verts[i2 * 3];
+        final y2 = verts[i2 * 3 + 1];
+        final z2 = verts[i2 * 3 + 2];
 
-      triangles.add(Triangle3D(
-        points2D: [p0, p1, p2],
-        depth: avgDepth,
-        normalZ: normalizedNz,
-        avgHeight: avgH,
-      ));
+        final p0 = project(x0, y0, z0);
+        final p1 = project(x1, y1, z1);
+        final p2 = project(x2, y2, z2);
+
+        final d0 = getDepth(x0, y0, z0);
+        final d1 = getDepth(x1, y1, z1);
+        final d2 = getDepth(x2, y2, z2);
+        final avgDepth = (d0 + d1 + d2) / 3.0;
+
+        final v1x = x1 - x0;
+        final v1y = y1 - y0;
+        final v1z = z1 - z0;
+        final v2x = x2 - x0;
+        final v2y = y2 - y0;
+        final v2z = z2 - z0;
+
+        final nx = v1y * v2z - v1z * v2y;
+        final ny = v1z * v2x - v1x * v2z;
+        final nz = v1x * v2y - v1y * v2x;
+        final normLen = math.sqrt(nx * nx + ny * ny + nz * nz);
+        final normalizedNz = (normLen > 0.0001) ? (nz / normLen).abs() : 0.5;
+
+        final avgH = (z0 + z1 + z2) / 3.0;
+
+        triangles.add(Triangle3D(
+          points2D: [p0, p1, p2],
+          depth: avgDepth,
+          normalZ: normalizedNz,
+          avgHeight: avgH,
+          isBottomSurface: isBottom,
+        ));
+      }
+    }
+
+    addMeshTriangles(vertices, indices, false);
+    if (showBottomSurface && bottomVertices.isNotEmpty && bottomIndices.isNotEmpty) {
+      addMeshTriangles(bottomVertices, bottomIndices, true);
     }
 
     // 4. Painter's Algorithm: Sort by depth (farthest triangles rendered first)
@@ -223,10 +276,14 @@ class Native3DCanvasPainter extends CustomPainter {
 
     // 5. Render Polygons
     final fillPaint = Paint()..style = PaintingStyle.fill;
-    final wirePaint = Paint()
+    final wirePaintTop = Paint()
       ..style = PaintingStyle.stroke
       ..color = const Color(0x33FFFFFF)
       ..strokeWidth = 0.8;
+    final wirePaintBot = Paint()
+      ..style = PaintingStyle.stroke
+      ..color = AppColors.amberGlow.withAlpha(65)
+      ..strokeWidth = 0.7;
 
     for (final tri in triangles) {
       final path = Path()
@@ -235,16 +292,33 @@ class Native3DCanvasPainter extends CustomPainter {
         ..lineTo(tri.points2D[2].dx, tri.points2D[2].dy)
         ..close();
 
-      // Academic Heatmap: Indigo (valley) -> Cyan -> Emerald -> Amber (peak)
-      final color = _getElevationColor(tri.avgHeight, tri.normalZ);
+      final color = tri.isBottomSurface
+          ? _getBottomSurfaceColor(tri.avgHeight, tri.normalZ)
+          : _getElevationColor(tri.avgHeight, tri.normalZ);
       fillPaint.color = color;
 
       canvas.drawPath(path, fillPaint);
 
       if (showWireframe) {
-        canvas.drawPath(path, wirePaint);
+        canvas.drawPath(path, tri.isBottomSurface ? wirePaintBot : wirePaintTop);
       }
     }
+  }
+
+  Color _getBottomSurfaceColor(double z, double lightFactor) {
+    final t = ((z + 2.0) / 6.0).clamp(0.0, 1.0);
+    final base = Color.lerp(
+      AppColors.amberGlow,
+      AppColors.violetHeatmap,
+      t,
+    )!;
+    final light = 0.45 + 0.55 * lightFactor;
+    return Color.fromARGB(
+      175,
+      (base.r * 255.0 * light).round().clamp(0, 255),
+      (base.g * 255.0 * light).round().clamp(0, 255),
+      (base.b * 255.0 * light).round().clamp(0, 255),
+    );
   }
 
   Color _getElevationColor(double z, double lightFactor) {
@@ -311,6 +385,10 @@ class Native3DCanvasPainter extends CustomPainter {
         oldDelegate.pan != pan ||
         oldDelegate.showWireframe != showWireframe ||
         oldDelegate.showAxes != showAxes ||
-        oldDelegate.vertices != vertices;
+        oldDelegate.showProjection != showProjection ||
+        oldDelegate.showBottomSurface != showBottomSurface ||
+        oldDelegate.vertices != vertices ||
+        oldDelegate.bottomVertices != bottomVertices ||
+        oldDelegate.domainProjectionPolygons != domainProjectionPolygons;
   }
 }

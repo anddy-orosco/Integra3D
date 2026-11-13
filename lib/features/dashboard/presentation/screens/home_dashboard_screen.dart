@@ -3,14 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/math_colors.dart';
-import '../../../calculator/presentation/widgets/mathway_formula_editor.dart';
+import '../../../calculator/presentation/widgets/mat212_problem_builder.dart';
 import '../../../ocr/presentation/widgets/ocr_scanner_sheet.dart';
 import '../../../solver/domain/entities/integral_solution.dart';
 import '../../../solver/presentation/providers/solver_provider.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import '../../../../core/utils/latex_sanitizer.dart';
+import '../../../../core/utils/platform_responsive.dart';
 import '../../../solver/presentation/widgets/latex_card.dart';
-import '../../../visualization_3d/presentation/widgets/native_3d_viewport.dart';
+import '../../../visualization_3d/presentation/widgets/dual_visualization_viewport.dart';
 import '../widgets/calculus_formulary_tab.dart';
 
 class HomeDashboardScreen extends ConsumerStatefulWidget {
@@ -23,6 +24,8 @@ class HomeDashboardScreen extends ConsumerStatefulWidget {
 class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  int _desktopRightTabIndex = 0; // 0: 3D View, 1: Solución, 2: Formulario
+  bool _desktopSplitView = false;
 
   @override
   void initState() {
@@ -48,7 +51,8 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           'coordinate_system': integral.coordinateSystem.apiValue,
           'bounds': integral.bounds.map((b) => b.toJson()).toList(),
         });
-        _tabController.animateTo(1); // Saltar a la solución
+        _tabController.animateTo(1); // Saltar a la solución en móvil
+        setState(() => _desktopRightTabIndex = 1); // Solución en escritorio
       },
     );
   }
@@ -352,56 +356,310 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
       ),
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            // Preset problems bar
-            _buildPresetBar(state, notifier, mathColors),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isExpanded = constraints.maxWidth >= ResponsiveLayout.mediumBreakpoint;
 
-            // Refined Segmented Tab Bar (Dark Matrix)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: AppColors.slateDark,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.borderSubtle),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicatorSize: TabBarIndicatorSize.tab,
-                dividerColor: Colors.transparent,
-                indicator: BoxDecoration(
-                  color: AppColors.slateElevated,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: mathColors.secondaryAccent.withAlpha(140), width: 1),
+            if (isExpanded) {
+              return _buildDesktopWorkstation(context, state, notifier, mathColors, constraints);
+            }
+
+            return Column(
+              children: [
+                // Preset problems bar
+                _buildPresetBar(state, notifier, mathColors),
+
+                // Refined Segmented Tab Bar (Dark Matrix)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: AppColors.slateDark,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    indicator: BoxDecoration(
+                      color: AppColors.slateElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: mathColors.secondaryAccent.withAlpha(140), width: 1),
+                    ),
+                    labelColor: AppColors.pureWhite,
+                    unselectedLabelColor: mathColors.metadataText,
+                    labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                    tabs: const [
+                      Tab(icon: Icon(Icons.edit_outlined, size: 16), text: 'Editor'),
+                      Tab(icon: Icon(Icons.functions_rounded, size: 16), text: 'Solución'),
+                      Tab(icon: Icon(Icons.menu_book_rounded, size: 16), text: 'Formulario'),
+                      Tab(icon: Icon(Icons.view_in_ar_rounded, size: 16), text: '3D View'),
+                    ],
+                  ),
                 ),
-                labelColor: AppColors.pureWhite,
-                unselectedLabelColor: mathColors.metadataText,
-                labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                tabs: const [
-                  Tab(icon: Icon(Icons.edit_outlined, size: 16), text: 'Editor'),
-                  Tab(icon: Icon(Icons.functions_rounded, size: 16), text: 'Solución'),
-                  Tab(icon: Icon(Icons.menu_book_rounded, size: 16), text: 'Formulario'),
-                  Tab(icon: Icon(Icons.view_in_ar_rounded, size: 16), text: '3D View'),
-                ],
+
+                // Main Tab Content
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildEditorTab(state, notifier, mathColors),
+                      _buildSolutionTab(state, mathColors),
+                      const CalculusFormularyTab(),
+                      _build3DViewportTab(state),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopWorkstation(
+    BuildContext context,
+    SolverState state,
+    SolverNotifier notifier,
+    MathColors mathColors,
+    BoxConstraints constraints,
+  ) {
+    final leftWidth = (constraints.maxWidth * 0.40).clamp(410.0, 480.0);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Panel Izquierdo: Editor Matemático & Problemas Modelo
+        SizedBox(
+          width: leftWidth,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: AppColors.deepVoid,
+              border: Border(
+                right: BorderSide(color: AppColors.borderSubtle, width: 1.2),
               ),
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header del Panel Izquierdo: Editor
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: const BoxDecoration(
+                    color: AppColors.slateDark,
+                    border: Border(
+                      bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
+                    ),
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.edit_outlined, size: 15, color: AppColors.cyberEmerald),
+                      SizedBox(width: 8),
+                      Text(
+                        'Editor',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.pureWhite,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      Spacer(),
+                      Text(
+                        'Cálculo Multivariable',
+                        style: TextStyle(fontSize: 10, color: AppColors.mutedGray),
+                      ),
+                    ],
+                  ),
+                ),
+                _buildPresetBar(state, notifier, mathColors),
+                Expanded(
+                  child: _buildEditorTab(state, notifier, mathColors),
+                ),
+              ],
+            ),
+          ),
+        ),
 
-            // Main Tab Content
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildEditorTab(state, notifier, mathColors),
-                  _buildSolutionTab(state, mathColors),
-                  const CalculusFormularyTab(),
-                  _build3DViewportTab(state),
-                ],
+        // Panel Derecho: Workstation con Tabs de 3D/2D Viewport, Solución Paso a Paso y Formulario
+        Expanded(
+          child: Container(
+            color: AppColors.deepVoid,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildDesktopRightToolbar(mathColors, constraints.maxWidth),
+                Expanded(
+                  child: _desktopSplitView && constraints.maxWidth >= 1100
+                      ? _buildDesktopSplitPanel(state, mathColors)
+                      : switch (_desktopRightTabIndex) {
+                          0 => _build3DViewportTab(state),
+                          1 => _buildSolutionTab(state, mathColors),
+                          2 => const CalculusFormularyTab(),
+                          _ => _build3DViewportTab(state),
+                        },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopRightToolbar(MathColors mathColors, double totalWidth) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: const BoxDecoration(
+        color: AppColors.slateDark,
+        border: Border(
+          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            _buildWorkstationTabButton(
+              index: 0,
+              icon: Icons.view_in_ar_rounded,
+              label: '3D View',
+              mathColors: mathColors,
+            ),
+            const SizedBox(width: 8),
+            _buildWorkstationTabButton(
+              index: 1,
+              icon: Icons.functions_rounded,
+              label: 'Solución',
+              mathColors: mathColors,
+            ),
+            const SizedBox(width: 8),
+            _buildWorkstationTabButton(
+              index: 2,
+              icon: Icons.menu_book_rounded,
+              label: 'Formulario',
+              mathColors: mathColors,
+            ),
+            if (totalWidth >= 1100) ...[
+              const SizedBox(width: 16),
+              Tooltip(
+                message: _desktopSplitView
+                    ? 'Desactivar vista dividida (Mostrar una sola pestaña)'
+                    : 'Ver Sólido 3D y Solución simultáneamente',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => setState(() => _desktopSplitView = !_desktopSplitView),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _desktopSplitView
+                          ? AppColors.cyberEmerald.withAlpha(40)
+                          : AppColors.slateElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _desktopSplitView
+                            ? AppColors.cyberEmerald
+                            : AppColors.borderSubtle,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.vertical_split_rounded,
+                          size: 15,
+                          color: _desktopSplitView
+                              ? AppColors.cyberEmerald
+                              : AppColors.mutedGray,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Doble Panel (3D + Solución)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: _desktopSplitView
+                                ? AppColors.cyberEmerald
+                                : AppColors.pureWhite,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWorkstationTabButton({
+    required int index,
+    required IconData icon,
+    required String label,
+    required MathColors mathColors,
+  }) {
+    final isSelected = _desktopRightTabIndex == index;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        setState(() {
+          _desktopRightTabIndex = index;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.slateElevated : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: isSelected
+              ? Border.all(color: mathColors.secondaryAccent.withAlpha(160), width: 1.2)
+              : Border.all(color: Colors.transparent),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? AppColors.pureWhite : mathColors.metadataText,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? AppColors.pureWhite : mathColors.metadataText,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDesktopSplitPanel(SolverState state, MathColors mathColors) {
+    return Column(
+      children: [
+        Expanded(
+          flex: 5,
+          child: _build3DViewportTab(state),
+        ),
+        Container(
+          height: 1.5,
+          color: AppColors.borderSubtle,
+        ),
+        Expanded(
+          flex: 6,
+          child: _buildSolutionTab(state, mathColors),
+        ),
+      ],
     );
   }
 
@@ -451,6 +709,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               onPressed: () {
                 notifier.loadPreset(preset);
                 _tabController.animateTo(1);
+                setState(() => _desktopRightTabIndex = 1);
               },
             ),
           );
@@ -460,18 +719,13 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
   }
 
   Widget _buildEditorTab(SolverState state, SolverNotifier notifier, MathColors mathColors) {
-    return MathwayFormulaEditor(
+    return Mat212ProblemBuilder(
       initialIntegral: state.currentIntegral,
       onCameraOcr: _openOcrScanner,
       onSolve: (integral) {
-        notifier.loadPreset({
-          'name': 'Integral Personalizada',
-          'dimension': integral.dimension,
-          'integrand': integral.integrand,
-          'coordinate_system': integral.coordinateSystem.apiValue,
-          'bounds': integral.bounds.map((b) => b.toJson()).toList(),
-        });
+        notifier.solveIntegralModel(integral);
         _tabController.animateTo(1);
+        setState(() => _desktopRightTabIndex = 1);
       },
     );
   }
@@ -487,7 +741,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     if (raw.startsWith('=')) {
       return 'I $raw';
     }
-    if (raw.startsWith(r'\text')) {
+    if (raw.startsWith(r'\text') || raw.startsWith('M =') || raw.startsWith('(')) {
       return raw;
     }
     return 'I = $raw';
@@ -505,9 +759,12 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
         return SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
           physics: const BouncingScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
               // Original Integral
               LatexCard(
                 title: 'Integral Planteada',
@@ -619,6 +876,33 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               _buildAiStatusBanner(solution, mathColors),
               const SizedBox(height: 8),
 
+              // Análisis del Dominio (domain_analysis)
+              if (solution.domainAnalysis != null) ...[
+                _buildDomainAnalysisCard(solution.domainAnalysis!, mathColors),
+                const SizedBox(height: 12),
+              ],
+
+              // Conmutador Interactivo Visor Dual 2D / UV / 3D integrado en la pantalla de resolución
+              if (state.currentIntegral.bounds.length >= 2 ||
+                  state.currentIntegral.boundaryCurves.isNotEmpty ||
+                  state.currentIntegral.verticesInput.isNotEmpty) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.slateDark,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: DualVisualizationViewport(
+                    integral: state.currentIntegral,
+                    solution: solution,
+                    meshData: state.meshData,
+                    fixedHeight: 330,
+                  ),
+                ),
+              ],
+
               // Desarrollo Paso a Paso Académico Integrado Directamente en Solución
               if (solution.steps.isNotEmpty) ...[
                 Row(
@@ -688,8 +972,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               ],
             ],
           ),
-        );
-      },
+        ),
+      ),
+    );
+  },
       loading: () => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1089,11 +1375,14 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                   children: [
                     Icon(Icons.arrow_forward_rounded, size: 14, color: mathColors.primaryAction),
                     const SizedBox(width: 8),
-                    Text(
-                      step.stepNumber == solution.steps.length
-                          ? 'Resultado final del cálculo:'
-                          : 'Expresión para el Paso ${step.stepNumber + 1}:',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mathColors.primaryAction),
+                    Flexible(
+                      child: Text(
+                        step.stepNumber == solution.steps.length
+                            ? 'Resultado final del cálculo:'
+                            : 'Expresión para el Paso ${step.stepNumber + 1}:',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: mathColors.primaryAction),
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1186,10 +1475,105 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     return result;
   }
 
+  Widget _buildDomainAnalysisCard(DomainAnalysis da, MathColors mathColors) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.slateDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: mathColors.secondaryAccent.withAlpha(110)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.analytics_outlined, size: 16, color: mathColors.secondaryAccent),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Análisis Geométrico del Dominio',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.pureWhite,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.cyberEmerald.withAlpha(30),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.cyberEmerald.withAlpha(120)),
+                ),
+                child: Text(
+                  da.regionType,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.cyberEmerald,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (da.intersectionPoints.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                const Text(
+                  'Cortes:',
+                  style: TextStyle(fontSize: 11, color: AppColors.mutedGray),
+                ),
+                ...da.intersectionPoints.map(
+                  (pt) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.deepVoid,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.amberGlow.withAlpha(130)),
+                    ),
+                    child: Text(
+                      '(${pt['x'] ?? '0'}, ${pt['y'] ?? '0'})',
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.amberGlow,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (da.deducedLimitsLatex.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            LatexCard(latex: da.deducedLimitsLatex),
+          ],
+          if (da.jacobianLatex != null && da.jacobianLatex!.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            LatexCard(title: 'Determinante Jacobiano', latex: da.jacobianLatex!),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _build3DViewportTab(SolverState state) {
+    final solution = state.solutionState.asData?.value;
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: Native3DViewport(meshData: state.meshData),
+      child: DualVisualizationViewport(
+        integral: state.currentIntegral,
+        solution: solution,
+        meshData: state.meshData,
+        initialMode: DualViewportMode.solid3D,
+      ),
     );
   }
 }

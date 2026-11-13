@@ -81,7 +81,13 @@ ESTRUCTURA GENERAL DE LA RESPUESTA JSON:
     { "title": "3. Conclusión y Verificación del Resultado", "content": "..." }
   ],
   "exact_result_latex": "resultado exacto en LaTeX",
-  "decimal_result": 8.0
+  "decimal_result": 8.0,
+  "domain_analysis": {
+    "region_type": "Type I | Type II | Polar | UV_Jacobian | Cylindrical | Spherical",
+    "intersection_points": [{"x": "0", "y": "0"}],
+    "deduced_limits_latex": "explicación en KaTeX de cómo se despejaron las cotas",
+    "jacobian_latex": "desarrollo del determinante Jacobiano si aplica"
+  }
 }
 """
 
@@ -113,6 +119,8 @@ ESTRUCTURA GENERAL DE LA RESPUESTA JSON:
                     ai_result["decimal_result"] = solution.approx_numeric
                     if not ai_result.get("region_definition"):
                         ai_result["region_definition"] = solution.region_definition or checkpoints.get("region_definition", "")
+                    if not ai_result.get("domain_analysis") and getattr(solution, "domain_analysis", None):
+                        ai_result["domain_analysis"] = solution.domain_analysis
                     return ai_result
             except Exception:
                 # Logging can be added; gracefully fallback to algorithmic generator
@@ -155,6 +163,7 @@ ESTRUCTURA GENERAL DE LA RESPUESTA JSON:
             "exact_result_latex": solution.exact_latex,
             "decimal_result": solution.approx_numeric,
             "steps": steps_data,
+            **({"domain_analysis": solution.domain_analysis} if getattr(solution, "domain_analysis", None) else {}),
         }
 
     @classmethod
@@ -277,7 +286,7 @@ ESTRUCTURA GENERAL DE LA RESPUESTA JSON:
                 "is_limit_inverted": s.is_limit_inverted,
             })
 
-        return {
+        result: Dict[str, Any] = {
             "title": f"Análisis Pedagógico de la Integral {dimension_str}",
             "integral_latex": solution.original_integral_latex,
             "region_definition": solution.region_definition or checkpoints.get("region_definition", ""),
@@ -289,3 +298,8 @@ ESTRUCTURA GENERAL DE LA RESPUESTA JSON:
             "solution_latex": solution.exact_latex,
             "approx_numeric": solution.approx_numeric,
         }
+        if getattr(solution, "domain_analysis", None):
+            result["domain_analysis"] = solution.domain_analysis
+        if getattr(solution, "application_summary", None):
+            result["application_summary"] = solution.application_summary
+        return result

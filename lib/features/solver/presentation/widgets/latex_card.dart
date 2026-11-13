@@ -49,15 +49,19 @@ class LatexCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    title!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isHighlight ? AppColors.electricCyan : AppColors.mutedGray,
-                      letterSpacing: 0.3,
+                  Expanded(
+                    child: Text(
+                      title!,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isHighlight ? AppColors.electricCyan : AppColors.mutedGray,
+                        letterSpacing: 0.3,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   InkWell(
                     borderRadius: BorderRadius.circular(6),
                     onTap: () {

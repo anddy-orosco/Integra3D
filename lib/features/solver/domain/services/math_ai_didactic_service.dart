@@ -64,9 +64,19 @@ FASE 2 (Empaquetado de cada Paso para la Aplicación):
 REGLAS MATEMÁTICAS INQUEBRANTABLES:
 1. Responde ÚNICAMENTE con un objeto JSON válido (sin bloques ```json ni texto adicional fuera del JSON).
 2. Usa notación LaTeX pura para todas las fórmulas matemáticas. Escapa siempre las barras invertidas dentro de cadenas JSON (ej. \\int, \\frac, \\left, \\right).
-3. Si la integral no admite primitiva elemental en el orden dado (por ejemplo \int y \cos(x^3) dx dy), APLICA OBLIGATORIAMENTE el cambio de orden de integración (Fubini inverso) transformando la región R.
-4. NUNCA uses letras abstractas ni funciones ficticias vacías como A(x) o B(y). Escribe siempre las expresiones explícitas completas en LaTeX puro.
-5. NUNCA inventes números ni signos; sé exacto con las fracciones irreducibles y constantes.
+3. Si la integral no admite primitiva elemental en el orden dado (por ejemplo \int y \cos(x^3) dx dy, y e^x / x, y^3 e^x / x^2, x^3 \sin(y^3), e^{x^4}, \sin(y)/y, \tan(x^2), e^{y/x}, x\sqrt{1+y^3}), APLICA OBLIGATORIAMENTE el cambio de orden de integración (Fubini inverso) transformando la región R.
+4. Para coordenadas polares (x^2+y^2=a^2, x^2+y^2=2ax, r=1+\cos\theta), cilíndricas (incluyendo permutaciones de ejes como y^2+z^2=r^2), esféricas (\rho^2\sin\phi, elipsoides reescalados, (x^2+y^2+z^2)^2=a^3x) o cambios de variable (u, v), muestra explícitamente el determinante Jacobiano y conserva las constantes simbólicas positivas (a, b, c, m, n, R, H, k).
+5. NUNCA uses letras abstractas ni funciones ficticias vacías como A(x) o B(y). Escribe siempre las expresiones explícitas completas en LaTeX puro.
+6. NUNCA inventes números ni signos; sé exacto con las fracciones irreducibles y constantes.
+
+OBJETO OPCIONAL DE ANÁLISIS DE DOMINIO ("domain_analysis"):
+Incluye cuando aplique el objeto estructurado "domain_analysis":
+{
+  "region_type": "Type I | Type II | Polar | UV_Jacobian | Cylindrical | Spherical",
+  "intersection_points": [{"x": "0", "y": "0"}, {"x": "2", "y": "4"}],
+  "deduced_limits_latex": "Explicación en KaTeX de cómo se despejaron las cotas inferiores y superiores a partir de las gráficas 2D/3D.",
+  "jacobian_latex": "Desarrollo del determinante Jacobiano cuando aplique (null si es cartesiana directa)."
+}
 
 APARTADO OBLIGATORIO DE FORMULARIO Y MÉTODOS ("formulas_and_methods"):
 Incluye OBLIGATORIAMENTE un array con los teoremas, fórmulas de cálculo e identidades matemáticas empleadas en el ejercicio:
@@ -83,6 +93,7 @@ ESTRUCTURA GENERAL DE LA RESPUESTA JSON:
 {
   "integral_latex": "string con la integral en LaTeX",
   "region_definition": "Esta integral está definida sobre la región donde...",
+  "domain_analysis": { ... },
   "steps": [ ... ],
   "formulas_and_methods": [ ... ],
   "sections": [
@@ -175,7 +186,8 @@ $referenceInfo
 
 REQUISITOS FUNDAMENTALES:
 1. FORMULARIO Y MÉTODOS ("formulas_and_methods"): Incluye OBLIGATORIAMENTE el array con los teoremas, identidades y reglas teóricas generales empleadas (con name, formula_latex, description, application).
-2. SIN FUNCIONES VACÍAS: Prohibido usar funciones ficticias abstractas como A(x) o B(y). Escribe todas las fórmulas explícitas completas en LaTeX puro.
+2. ANÁLISIS DE DOMINIO ("domain_analysis"): Incluye region_type ("Type I", "Type II", "Polar", "UV_Jacobian", "Cylindrical", "Spherical"), intersection_points, deduced_limits_latex y jacobian_latex si aplica.
+3. SIN FUNCIONES VACÍAS: Prohibido usar funciones ficticias abstractas como A(x) o B(y). Escribe todas las fórmulas explícitas completas en LaTeX puro.
 ''';
 
       Map<String, dynamic>? aiJson;
@@ -342,6 +354,32 @@ REQUISITOS FUNDAMENTALES:
             : (aiExactResult.isNotEmpty ? aiExactResult : baseSolution.exactLatex);
         final decimalResult = baseSolution.approxNumeric ?? (aiJson['decimal_result'] as num?)?.toDouble();
 
+        DomainAnalysis? mergedDomain = baseSolution.domainAnalysis;
+        final rawDomainAnalysis = aiJson['domain_analysis'];
+        if (rawDomainAnalysis is Map<String, dynamic>) {
+          final aiDomain = DomainAnalysis.fromJson(rawDomainAnalysis);
+          if (mergedDomain == null) {
+            mergedDomain = aiDomain;
+          } else {
+            mergedDomain = DomainAnalysis(
+              regionType: aiDomain.regionType.isNotEmpty ? aiDomain.regionType : mergedDomain.regionType,
+              intersectionPoints: aiDomain.intersectionPoints.isNotEmpty
+                  ? aiDomain.intersectionPoints
+                  : mergedDomain.intersectionPoints,
+              deducedLimitsLatex: aiDomain.deducedLimitsLatex.isNotEmpty
+                  ? aiDomain.deducedLimitsLatex
+                  : mergedDomain.deducedLimitsLatex,
+              jacobianLatex: (aiDomain.jacobianLatex != null && aiDomain.jacobianLatex!.isNotEmpty)
+                  ? aiDomain.jacobianLatex
+                  : mergedDomain.jacobianLatex,
+              boundaryCurves: mergedDomain.boundaryCurves,
+              alternateOrderLatex: mergedDomain.alternateOrderLatex,
+              uvTransformSummary: mergedDomain.uvTransformSummary,
+              uvData: mergedDomain.uvData,
+            );
+          }
+        }
+
         return baseSolution.copyWith(
           steps: finalSteps,
           didacticSections: sections.isNotEmpty ? sections : baseSolution.didacticSections,
@@ -349,6 +387,7 @@ REQUISITOS FUNDAMENTALES:
           regionDefinition: regionDef,
           exactLatex: exactResult,
           approxNumeric: decimalResult,
+          domainAnalysis: mergedDomain,
           aiProvider: aiWasTooSummarized ? 'Motor Simbólico Autónomo' : providerName,
           aiStatus: aiWasTooSummarized
               ? '✨ Procedimiento Didáctico Completo (${finalSteps.length} pasos)'
@@ -446,18 +485,63 @@ REQUISITOS FUNDAMENTALES:
       application: 'Cálculo de primitivas parciales manteniendo fijas las variables exteriores.',
     ));
 
-    // 5. Coordenadas polares / curvilíneas si aplica
+    // 5. Coordenadas polares / curvilíneas / Jacobianos si aplica
     final bool hasRadical = integral.bounds.any((b) => b.lower.contains('sqrt') || b.upper.contains('sqrt'));
-    if (hasRadical) {
+    if (integral.coordinateSystem == CoordinateSystemType.polar || hasRadical) {
       list.add(const FormulaMethodCard(
         name: 'Transformación a Coordenadas Polares y Factor Jacobiano',
         formulaLatex: r'dA = dx \, dy = r \, dr \, d\theta, \quad x = r\cos\theta, \quad y = r\sin\theta',
-        description: 'Facilita la integración sobre recintos circulares incorporando el factor de escala diferencial Jacobiano r.',
-        application: 'Conversión de fronteras curvilíneas en cotas constantes de radio r y ángulo polar theta.',
+        description: 'Facilita la integración sobre recintos circulares o cardioides incorporando el factor de escala diferencial Jacobiano r.',
+        application: 'Conversión de fronteras curvilíneas en cotas radiales y angulares (como circunferencias centradas o desplazadas r = 2a cosθ).',
       ));
     }
 
-    // 6. Inversión de límites si aplica
+    if (integral.coordinateSystem == CoordinateSystemType.cylindrical) {
+      list.add(const FormulaMethodCard(
+        name: 'Coordenadas Cilíndricas en ℝ³',
+        formulaLatex: r'dV = r \, dz \, dr \, d\theta, \quad x = r\cos\theta, \quad y = r\sin\theta, \quad z = z',
+        description: 'Extiende las coordenadas polares al espacio tridimensional aprovechando la simetría axial alrededor de un eje.',
+        application: 'Sólidos limitados por cilindros y paraboloides (J = r).',
+      ));
+    }
+
+    if (integral.coordinateSystem == CoordinateSystemType.spherical) {
+      list.add(const FormulaMethodCard(
+        name: 'Coordenadas Esféricas y Jacobiano Espacial',
+        formulaLatex: r'dV = \rho^2 \sin\phi \, d\rho \, d\phi \, d\theta, \quad x = \rho\sin\phi\cos\theta, \quad y = \rho\sin\phi\sin\theta, \quad z = \rho\cos\phi',
+        description: 'Parametriza regiones con simetría central mediante distancia radial ρ, colatitud φ y acimut θ.',
+        application: 'Esferas, conos, lemniscatas espaciales y elipsoides reescalados.',
+      ));
+    }
+
+    final bool hasUvTransform = integral.uvTransformInput?.trim().isNotEmpty == true ||
+        steps.any((s) => (s.appliedMethod ?? '').toLowerCase().contains('jacobiano'));
+    if (hasUvTransform) {
+      list.add(const FormulaMethodCard(
+        name: 'Teorema de Cambio de Variables y Determinante Jacobiano (u, v)',
+        formulaLatex: r'\iint_R f(x,y)\,dx\,dy = \iint_S f(x(u,v), y(u,v)) \, \left|\frac{\partial(x,y)}{\partial(u,v)}\right| du\,dv, \quad J = \left(\frac{\partial(u,v)}{\partial(x,y)}\right)^{-1}',
+        description: 'Transforma regiones delimitadas por familias de curvas en un rectángulo simple en el plano UV multiplicando por |J|.',
+        application: 'Simplificación de dominios curvilíneos (xy=c, y=kx o rectas paralelas).',
+      ));
+    }
+
+    if (integral.problemMode == ProblemMode.surfaceArea) {
+      list.add(const FormulaMethodCard(
+        name: 'Área de Superficie Paramétrica 3D',
+        formulaLatex: r'A_S = \iint_R \sqrt{1 + \left(\frac{\partial z}{\partial x}\right)^2 + \left(\frac{\partial z}{\partial y}\right)^2} \, dA',
+        description: 'Integra el elemento diferencial de área superficial dS sobre la proyección R en el plano base XY.',
+        application: 'Cálculo exacto de áreas de paraboloides, conos, planos inclinados y esferas.',
+      ));
+    } else if (integral.problemMode == ProblemMode.massAndCenterOfMass) {
+      list.add(const FormulaMethodCard(
+        name: 'Masa Total, Momentos Estáticos y Centro de Masa',
+        formulaLatex: r'M = \iiint_V \rho \, dV, \quad \bar{x} = \frac{M_{yz}}{M}, \quad \bar{y} = \frac{M_{xz}}{M}, \quad \bar{z} = \frac{M_{xy}}{M}',
+        description: 'Obtiene la masa acumulada y las coordenadas centroidales ponderadas por la densidad variable o constante ρ.',
+        application: 'Estática de láminas planas y sólidos 3D en ingeniería.',
+      ));
+    }
+
+    // 6. Inversión de límites u orden de integración si aplica
     final bool hasInversion = steps.any((s) => s.isLimitInverted);
     if (hasInversion) {
       list.add(const FormulaMethodCard(
